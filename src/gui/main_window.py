@@ -1,0 +1,577 @@
+"""
+主視窗模組
+
+提供YouTube下載工具的主視窗界面，整合下載和媒體庫功能。
+"""
+import os
+import sys
+from pathlib import Path
+from typing import Optional
+import threading
+
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QPushButton, QLabel, QLineEdit, QComboBox, QStackedWidget, 
+    QStatusBar, QSplitter, QFileDialog, QMessageBox
+)
+
+from src.youtube_fetcher import YouTubeFetcher, MediaType, VideoQuality, AudioQuality
+from src.gui.media_library import MediaLibrary
+
+# 導入try2.py中的功能
+try:
+    import try2
+except ImportError:
+    try2 = None
+    print("警告：無法導入try2模組")
+
+
+class VideoAnalyzer(QObject):
+    """影片分析器，使用try2.py的功能在背景執行緒分析YouTube影片"""
+    analysis_finished = pyqtSignal(dict)  # 分析完成後發出信號
+    analysis_error = pyqtSignal(str)      # 分析出錯時發出信號
+    
+    def analyze_video(self, url: str):
+        """分析影片信息"""
+        try:
+            # 使用yt-dlp提取影片信息但不下載
+            import yt_dlp
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,  # 不下載，只提取信息
+                'noplaylist': True,     # 不處理播放列表
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                # 準備影片信息
+                video_info = {
+                    'title': info.get('title', '未知標題'),
+                    'uploader': info.get('uploader', '未知頻道'),
+                    'duration': info.get('duration', 0),
+                    'webpage_url': info.get('webpage_url', url),
+                    'thumbnail': info.get('thumbnail', '')
+                }
+                
+                self.analysis_finished.emit(video_info)
+        except Exception as e:
+            self.analysis_error.emit(str(e))
+
+
+class DownloadWidget(QWidget):
+    """下載頁面元件"""
+    
+    def __init__(self, youtube_fetcher: YouTubeFetcher, parent=None):
+        """
+        初始化下載頁面
+        
+        Args:
+            youtube_fetcher: YouTube資料獲取器實例
+            parent: 父元件
+        """
+        super().__init__(parent)
+        self.youtube_fetcher = youtube_fetcher
+        self.analyzer = VideoAnalyzer()
+        self.analyzer.analysis_finished.connect(self.on_analysis_finished)
+        self.analyzer.analysis_error.connect(self.on_analysis_error)
+        
+        self._init_ui()
+    
+    def _init_ui(self):
+        """初始化用戶界面"""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 頂部標題
+        title_label = QLabel("下載 YouTube 影片")
+        title_label.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 20px;")
+        
+        # URL輸入區域
+        url_layout = QHBoxLayout()
+        
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("輸入 YouTube 影片或播放清單網址")
+        self.url_input.setMinimumHeight(36)
+        self.url_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #c0c0c0;
+                border-radius: 4px;
+                padding: 0 10px;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #6366f1;
+            }
+        """)
+        
+        self.analyze_button = QPushButton("分析")
+        self.analyze_button.setMinimumHeight(36)
+        self.analyze_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6366f1;
+                color: white;
+                border-radius: 4px;
+                padding: 0 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
+            }
+        """)
+        self.analyze_button.clicked.connect(self.on_analyze_clicked)
+        
+        url_layout.addWidget(self.url_input)
+        url_layout.addWidget(self.analyze_button)
+        
+        # 視頻預覽區域
+        self.preview_widget = QWidget()
+        self.preview_widget.setVisible(False)
+        preview_layout = QHBoxLayout(self.preview_widget)
+        
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setFixedSize(QSize(240, 135))
+        self.thumbnail_label.setStyleSheet("background-color: #f0f0f0; border-radius: 8px;")
+        self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        
+        self.title_label = QLabel()
+        self.title_label.setStyleSheet("font-weight: bold; font-size: 16px;")
+        self.title_label.setWordWrap(True)
+        
+        self.channel_label = QLabel()
+        self.channel_label.setStyleSheet("color: #666; font-size: 12px;")
+        
+        # 下載選項
+        options_layout = QHBoxLayout()
+        
+        type_layout = QVBoxLayout()
+        type_label = QLabel("下載類型")
+        type_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        
+        type_buttons_layout = QHBoxLayout()
+        self.audio_button = QPushButton("音訊 (MP3)")
+        self.audio_button.setCheckable(True)
+        self.audio_button.setChecked(True)
+        self.audio_button.clicked.connect(lambda: self.on_type_changed(True))
+        
+        self.video_button = QPushButton("視訊")
+        self.video_button.setCheckable(True)
+        self.video_button.clicked.connect(lambda: self.on_type_changed(False))
+        
+        # 樣式化按鈕
+        for btn in [self.audio_button, self.video_button]:
+            btn.setStyleSheet("""
+                QPushButton {
+                    padding: 5px 15px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    background-color: white;
+                }
+                QPushButton:checked {
+                    background-color: #6366f1;
+                    color: white;
+                    border-color: #6366f1;
+                }
+            """)
+        
+        type_buttons_layout.addWidget(self.audio_button)
+        type_buttons_layout.addWidget(self.video_button)
+        
+        type_layout.addWidget(type_label)
+        type_layout.addLayout(type_buttons_layout)
+        
+        # 品質選擇
+        quality_layout = QVBoxLayout()
+        quality_label = QLabel("品質")
+        quality_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        
+        self.quality_combo = QComboBox()
+        self.quality_combo.setMinimumWidth(150)
+        self.quality_combo.setStyleSheet("""
+            QComboBox {
+                padding: 5px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background-color: white;
+            }
+        """)
+        
+        # 初始化音訊品質選項
+        self.update_quality_options(True)
+        
+        quality_layout.addWidget(quality_label)
+        quality_layout.addWidget(self.quality_combo)
+        
+        options_layout.addLayout(type_layout)
+        options_layout.addSpacing(20)
+        options_layout.addLayout(quality_layout)
+        options_layout.addStretch()
+        
+        # 下載按鈕
+        self.download_button = QPushButton("開始下載")
+        self.download_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6366f1;
+                color: white;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
+            }
+        """)
+        self.download_button.clicked.connect(self.on_download_clicked)
+        
+        # 下載選項和按鈕佈局
+        download_options_layout = QVBoxLayout()
+        download_options_layout.addLayout(options_layout)
+        download_options_layout.addStretch()
+        download_options_layout.addWidget(self.download_button, 0, Qt.AlignmentFlag.AlignRight)
+        
+        info_layout.addWidget(self.title_label)
+        info_layout.addWidget(self.channel_label)
+        info_layout.addSpacing(10)
+        info_layout.addLayout(download_options_layout)
+        
+        preview_layout.addWidget(self.thumbnail_label)
+        preview_layout.addWidget(info_widget)
+        
+        # 進行中的下載
+        downloads_title = QLabel("進行中的下載")
+        downloads_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px;")
+        
+        self.downloads_container = QWidget()
+        self.downloads_layout = QVBoxLayout(self.downloads_container)
+        self.downloads_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 將所有元件加入主佈局
+        main_layout.addWidget(title_label)
+        main_layout.addLayout(url_layout)
+        main_layout.addWidget(self.preview_widget)
+        main_layout.addWidget(downloads_title)
+        main_layout.addWidget(self.downloads_container)
+        main_layout.addStretch()
+    
+    def on_type_changed(self, is_audio: bool):
+        """處理下載類型變更"""
+        if is_audio:
+            self.audio_button.setChecked(True)
+            self.video_button.setChecked(False)
+        else:
+            self.audio_button.setChecked(False)
+            self.video_button.setChecked(True)
+        
+        self.update_quality_options(is_audio)
+    
+    def update_quality_options(self, is_audio: bool):
+        """更新品質選項"""
+        self.quality_combo.clear()
+        
+        if is_audio:
+            self.quality_combo.addItem("高品質 (320kbps)", AudioQuality.HIGH)
+            self.quality_combo.addItem("中等品質 (192kbps)", AudioQuality.MEDIUM)
+            self.quality_combo.addItem("一般品質 (128kbps)", AudioQuality.LOW)
+        else:
+            self.quality_combo.addItem("高品質 (1080p)", VideoQuality.HIGH)
+            self.quality_combo.addItem("中等品質 (720p)", VideoQuality.MEDIUM)
+            self.quality_combo.addItem("一般品質 (360p)", VideoQuality.LOW)
+    
+    def on_analyze_clicked(self):
+        """處理分析按鈕點擊事件"""
+        url = self.url_input.text().strip()
+        if not url:
+            QMessageBox.warning(self, "URL錯誤", "請輸入有效的YouTube影片或播放清單URL")
+            return
+        
+        # 禁用分析按鈕，顯示加載狀態
+        self.analyze_button.setEnabled(False)
+        self.analyze_button.setText("分析中...")
+        
+        # 在背景執行緒中分析影片
+        threading.Thread(
+            target=self.analyzer.analyze_video,
+            args=(url,),
+            daemon=True
+        ).start()
+    
+    @pyqtSlot(dict)
+    def on_analysis_finished(self, video_info):
+        """當影片分析完成時被呼叫"""
+        # 更新UI
+        self.title_label.setText(video_info['title'])
+        
+        # 計算時長
+        duration = video_info['duration']
+        minutes = duration // 60
+        seconds = duration % 60
+        
+        # 設置頻道和時長信息
+        self.channel_label.setText(f"頻道：{video_info['uploader']} • {minutes}:{seconds:02d}")
+        
+        # 顯示預覽區域
+        self.preview_widget.setVisible(True)
+        
+        # 重置分析按鈕
+        self.analyze_button.setEnabled(True)
+        self.analyze_button.setText("分析")
+    
+    @pyqtSlot(str)
+    def on_analysis_error(self, error_msg):
+        """當影片分析出錯時被呼叫"""
+        # 顯示錯誤消息
+        QMessageBox.critical(self, "分析失敗", f"無法解析影片資訊：{error_msg}")
+        
+        # 重置分析按鈕
+        self.analyze_button.setEnabled(True)
+        self.analyze_button.setText("分析")
+    
+    def on_download_clicked(self):
+        """處理下載按鈕點擊事件"""
+        url = self.url_input.text().strip()
+        if not url:
+            QMessageBox.warning(self, "URL錯誤", "請輸入有效的YouTube影片或播放清單URL")
+            return
+        
+        # 獲取下載選項
+        is_audio = self.audio_button.isChecked()
+        media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
+        quality = self.quality_combo.currentData()
+        
+        # 使用try2.py的功能下載音訊
+        if is_audio and try2 is not None:
+            threading.Thread(
+                target=try2.download_audio,
+                args=(url,),
+                daemon=True
+            ).start()
+            QMessageBox.information(self, "開始下載", "下載已開始，將存放到music資料夾")
+        else:
+            # 使用youtube_fetcher進行下載
+            try:
+                # 這裡應該調用youtube_fetcher的下載方法
+                # 並顯示下載進度
+                QMessageBox.information(self, "開始下載", "下載已開始，可在下方查看進度")
+            except Exception as e:
+                QMessageBox.critical(self, "下載失敗", f"下載過程中發生錯誤：{str(e)}")
+
+
+class MainWindow(QMainWindow):
+    """主視窗"""
+    
+    def __init__(self):
+        super().__init__()
+        
+        # 設置下載目錄
+        self.download_dir = Path.home() / "Downloads" / "YouTube"
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 創建YouTube下載器
+        self.youtube_fetcher = YouTubeFetcher(self.download_dir)
+        
+        # 設置視窗屬性
+        self.setWindowTitle("YouTube 下載工具")
+        self.setMinimumSize(1000, 700)
+        
+        # 初始化UI
+        self._init_ui()
+    
+    def _init_ui(self):
+        """初始化用戶界面"""
+        # 創建中央部件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # 主佈局
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # 側邊欄
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(240)
+        sidebar.setStyleSheet("""
+            #sidebar {
+                background-color: #1a1c23;
+                color: white;
+            }
+        """)
+        
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+        
+        # 應用名稱
+        title_container = QWidget()
+        title_container.setStyleSheet("padding: 20px;")
+        title_layout = QVBoxLayout(title_container)
+        
+        logo_label = QLabel("YouTube 下載工具")
+        logo_label.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
+        
+        title_layout.addWidget(logo_label)
+        
+        # 側邊欄選單
+        menu_container = QWidget()
+        menu_layout = QVBoxLayout(menu_container)
+        menu_layout.setContentsMargins(0, 0, 0, 0)
+        menu_layout.setSpacing(0)
+        
+        # 創建側邊欄選單項目
+        self.download_button = self._create_sidebar_button("下載", "download", 0)
+        self.library_button = self._create_sidebar_button("媒體庫", "music", 1)
+        self.playlists_button = self._create_sidebar_button("播放清單", "list", 2)
+        self.history_button = self._create_sidebar_button("下載歷史", "clock", 3)
+        self.settings_button = self._create_sidebar_button("設定", "settings", 4)
+        
+        menu_layout.addWidget(self.download_button)
+        menu_layout.addWidget(self.library_button)
+        menu_layout.addWidget(self.playlists_button)
+        menu_layout.addWidget(self.history_button)
+        menu_layout.addWidget(self.settings_button)
+        menu_layout.addStretch()
+        
+        # 磁碟空間指示器
+        disk_widget = QWidget()
+        disk_widget.setStyleSheet("background-color: #1a1c23; padding: 15px;")
+        disk_layout = QVBoxLayout(disk_widget)
+        
+        disk_label = QLabel("磁碟空間：75% 使用中")
+        disk_label.setStyleSheet("color: #6b7280; font-size: 12px;")
+        
+        progress_bg = QWidget()
+        progress_bg.setFixedHeight(6)
+        progress_bg.setStyleSheet("background-color: #374151; border-radius: 3px;")
+        
+        progress_layout = QHBoxLayout(progress_bg)
+        progress_layout.setContentsMargins(0, 0, 0, 0)
+        
+        progress_fill = QWidget()
+        progress_fill.setFixedWidth(int(progress_bg.width() * 0.75))
+        progress_fill.setStyleSheet("background-color: #6366f1; border-radius: 3px;")
+        
+        progress_layout.addWidget(progress_fill)
+        progress_layout.addStretch()
+        
+        disk_layout.addWidget(disk_label)
+        disk_layout.addWidget(progress_bg)
+        
+        # 組合側邊欄
+        sidebar_layout.addWidget(title_container)
+        sidebar_layout.addWidget(menu_container)
+        sidebar_layout.addStretch()
+        sidebar_layout.addWidget(disk_widget)
+        
+        # 內容區域
+        content_area = QWidget()
+        content_area.setStyleSheet("background-color: #bbbbbb;")  # 修改為灰色背景
+        content_layout = QVBoxLayout(content_area)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 頁面堆疊
+        self.stacked_widget = QStackedWidget()
+        
+        # 下載頁面
+        self.download_page = DownloadWidget(self.youtube_fetcher)
+        self.stacked_widget.addWidget(self.download_page)
+        
+        # 媒體庫頁面
+        self.library_page = MediaLibrary(str(self.download_dir))
+        self.stacked_widget.addWidget(self.library_page)
+        
+        # 其他頁面（示例）
+        self.playlists_page = QWidget()
+        self.history_page = QWidget()
+        self.settings_page = QWidget()
+        
+        self.stacked_widget.addWidget(self.playlists_page)
+        self.stacked_widget.addWidget(self.history_page)
+        self.stacked_widget.addWidget(self.settings_page)
+        
+        # 初始顯示下載頁面
+        self.stacked_widget.setCurrentIndex(0)
+        
+        content_layout.addWidget(self.stacked_widget)
+        
+        # 添加到主佈局
+        main_layout.addWidget(sidebar)
+        main_layout.addWidget(content_area)
+        
+        # 設置狀態欄
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("就緒")
+    
+    def _create_sidebar_button(self, text: str, icon_name: str, page_index: int) -> QPushButton:
+        """創建側邊欄按鈕"""
+        button = QPushButton(text)
+        button.setCheckable(True)
+        button.setFixedHeight(48)
+        button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                padding: 10px 20px;
+                color: #9ca3af;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #2d3748;
+            }
+            QPushButton:checked {
+                background-color: #4f46e5;
+                color: white;
+                font-weight: bold;
+            }
+        """)
+        
+        # 設置圖標（實際使用需載入正確的圖標）
+        # button.setIcon(QIcon(f"icons/{icon_name}.png"))
+        # button.setIconSize(QSize(20, 20))
+        
+        # 設置為第一個按鈕初始為選中狀態
+        if page_index == 0:
+            button.setChecked(True)
+        
+        # 連接點擊事件
+        button.clicked.connect(lambda: self._on_sidebar_button_clicked(button, page_index))
+        
+        return button
+    
+    def _on_sidebar_button_clicked(self, button: QPushButton, page_index: int):
+        """處理側邊欄按鈕點擊"""
+        # 重置所有按鈕狀態
+        for btn in [self.download_button, self.library_button, self.playlists_button, 
+                    self.history_button, self.settings_button]:
+            btn.setChecked(False)
+        
+        # 設置當前按鈕為選中狀態
+        button.setChecked(True)
+        
+        # 切換到對應頁面
+        self.stacked_widget.setCurrentIndex(page_index)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    
+    # 設置應用樣式表
+    app.setStyleSheet("""
+        QWidget {
+            font-family: "微軟正黑體", "Microsoft JhengHei", Arial, sans-serif;
+        }
+    """)
+    
+    window = MainWindow()
+    window.show()
+    
+    sys.exit(app.exec()) 
