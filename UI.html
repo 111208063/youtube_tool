@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 下載工具 - UI 設計參考</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <style>
+        /* Desktop application frame */
+        .app-window {
+            width: 1200px;
+            height: 800px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            margin: 20px;
+            position: relative;
+            display: inline-block;
+            vertical-align: top;
+        }
+        
+        /* Window title bar */
+        .title-bar {
+            height: 32px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+        
+        .title-bar-controls {
+            margin-left: auto;
+            display: flex;
+        }
+        
+        .control-button {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 8px;
+        }
+        
+        .close-button { background-color: #ff5f57; }
+        .minimize-button { background-color: #ffbd2e; }
+        .maximize-button { background-color: #28ca41; }
+        
+        /* Main application container */
+        .app-container {
+            display: flex;
+            height: calc(100% - 32px);
+            background: #f9fafb;
+        }
+        
+        /* Sidebar navigation */
+        .sidebar {
+            width: 240px;
+            background: #1a1c23;
+            color: #fff;
+            padding: 20px 0;
+        }
+        
+        /* Content area */
+        .content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Media player panel */
+        .media-player {
+            height: 100px;
+            background: #f1f5f9;
+            border-top: 1px solid #e2e8f0;
+            padding: 15px;
+        }
+        
+        /* App content area */
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        /* Gradient accents */
+        .gradient-accent {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="flex flex-col mb-4">
+        <h1 class="text-2xl font-bold mb-2">YouTube 下載工具 - 界面設計</h1>
+        <p class="text-gray-700">根據需求文件（PRD）設計的桌面應用界面。包含下載畫面和媒體庫畫面。</p>
+    </div>
+    
+    <!-- Download Screen -->
+    <div class="app-window">
+        <div class="title-bar">
+            <span class="font-medium text-sm">YouTube 下載工具</span>
+            <div class="title-bar-controls">
+                <div class="control-button minimize-button"></div>
+                <div class="control-button maximize-button"></div>
+                <div class="control-button close-button"></div>
+            </div>
+        </div>
+        <div class="app-container">
+            <!-- Sidebar Navigation -->
+            <div class="sidebar">
+                <div class="p-4">
+                    <h2 class="text-lg font-bold text-white">YouTube 下載工具</h2>
+                </div>
+                
+                <div class="mt-6">
+                    <div class="px-4 py-3 bg-indigo-600 flex items-center">
+                        <i data-feather="download" class="h-5 w-5 mr-3"></i>
+                        <span>下載</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="music" class="h-5 w-5 mr-3"></i>
+                        <span>媒體庫</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="list" class="h-5 w-5 mr-3"></i>
+                        <span>播放清單</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="clock" class="h-5 w-5 mr-3"></i>
+                        <span>下載歷史</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="settings" class="h-5 w-5 mr-3"></i>
+                        <span>設定</span>
+                    </div>
+                </div>
+                
+                <div class="mt-auto px-4 py-4 absolute bottom-0 w-full">
+                    <div class="text-xs text-gray-500">
+                        <p>磁碟空間：75% 使用中</p>
+                        <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                            <div class="gradient-accent h-2 rounded-full" style="width: 75%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="content">
+                <div class="main-content">
+                    <div class="mb-8">
+                        <h2 class="text-xl font-bold mb-4">下載 YouTube 影片</h2>
+                        
+                        <!-- URL Input Area -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm mb-6">
+                            <div class="flex">
+                                <input type="text" placeholder="輸入 YouTube 影片或播放清單網址" class="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                <button class="gradient-accent text-white px-6 py-3 rounded-r-lg font-medium flex items-center">
+                                    <i data-feather="search" class="h-5 w-5 mr-2"></i>
+                                    <span>分析</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Video Preview Area (shown after URL analysis) -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm mb-6">
+                            <div class="flex">
+                                <div class="w-64 h-36 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                                    <img src="https://images.unsplash.com/photo-1611162616475-46b635cb6868?ixlib=rb-1.2.1&auto=format&fit=crop&w=256&q=80" alt="影片縮圖" class="w-full h-full object-cover">
+                                </div>
+                                
+                                <div class="ml-5 flex-1">
+                                    <h3 class="font-bold text-lg mb-1">如何使用 Python 建立桌面應用程式</h3>
+                                    <p class="text-gray-600 text-sm mb-3">頻道：程式設計教學 • 25:42 • 2.5M 觀看次數</p>
+                                    
+                                    <div class="mt-auto">
+                                        <div class="flex items-center mb-4">
+                                            <div class="mr-6">
+                                                <label class="block text-sm font-medium text-gray-700 mb-1">下載類型</label>
+                                                <div class="flex">
+                                                    <button class="bg-indigo-600 text-white px-4 py-2 rounded-l-md">音訊 (MP3)</button>
+                                                    <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-r-md">視訊</button>
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-1">品質</label>
+                                                <select class="block w-full bg-white border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                                    <option>高品質 (320kbps)</option>
+                                                    <option>中等品質 (192kbps)</option>
+                                                    <option>一般品質 (128kbps)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flex items-center justify-end">
+                                            <button class="gradient-accent text-white px-6 py-2 rounded-lg font-medium flex items-center">
+                                                <i data-feather="download" class="h-5 w-5 mr-2"></i>
+                                                <span>開始下載</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Active Downloads -->
+                        <div>
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-bold text-lg">進行中的下載</h3>
+                                <button class="text-indigo-600 text-sm font-medium hover:text-indigo-800">全部清除</button>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-lg shadow-sm mb-3">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
+                                        <img src="https://images.unsplash.com/photo-1547394765-185e1e68f34e?ixlib=rb-1.2.1&auto=format&fit=crop&w=48&q=80" alt="縮圖" class="w-full h-full object-cover">
+                                    </div>
+                                    
+                                    <div class="ml-4 flex-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <h4 class="font-medium">Python 基礎教學 #12</h4>
+                                            <span class="text-sm text-gray-500">3.24 MB / 18.5 MB</span>
+                                        </div>
+                                        
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="gradient-accent h-2 rounded-full" style="width: 40%"></div>
+                                        </div>
+                                        
+                                        <div class="flex items-center justify-between mt-1">
+                                            <span class="text-xs text-gray-500">預計剩餘時間：1 分 20 秒</span>
+                                            <button>
+                                                <i data-feather="pause" class="h-4 w-4 text-gray-500"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-lg shadow-sm">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
+                                        <img src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?ixlib=rb-1.2.1&auto=format&fit=crop&w=48&q=80" alt="縮圖" class="w-full h-full object-cover">
+                                    </div>
+                                    
+                                    <div class="ml-4 flex-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <h4 class="font-medium">放鬆音樂合集</h4>
+                                            <span class="text-sm text-gray-500">12.8 MB / 68.7 MB</span>
+                                        </div>
+                                        
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="gradient-accent h-2 rounded-full" style="width: 18%"></div>
+                                        </div>
+                                        
+                                        <div class="flex items-center justify-between mt-1">
+                                            <span class="text-xs text-gray-500">預計剩餘時間：4 分 45 秒</span>
+                                            <button>
+                                                <i data-feather="pause" class="h-4 w-4 text-gray-500"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Media Player -->
+                <div class="media-player">
+                    <div class="flex items-center">
+                        <div class="w-16 h-16 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
+                            <img src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?ixlib=rb-1.2.1&auto=format&fit=crop&w=64&q=80" alt="正在播放" class="w-full h-full object-cover">
+                        </div>
+                        
+                        <div class="ml-4 flex-1">
+                            <h4 class="font-medium">冥想音樂 - 放鬆心靈</h4>
+                            <p class="text-sm text-gray-600">放鬆音樂頻道</p>
+                            
+                            <div class="mt-2 flex items-center">
+                                <button class="text-gray-600 hover:text-gray-800 mr-5">
+                                    <i data-feather="skip-back" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <button class="bg-indigo-600 text-white p-1 rounded-full h-8 w-8 flex items-center justify-center mr-5">
+                                    <i data-feather="pause" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <button class="text-gray-600 hover:text-gray-800">
+                                    <i data-feather="skip-forward" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <div class="mx-5 flex-1">
+                                    <div class="w-full bg-gray-300 rounded-full h-1">
+                                        <div class="bg-indigo-600 h-1 rounded-full" style="width: 30%"></div>
+                                    </div>
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>3:45</span>
+                                        <span>12:20</span>
+                                    </div>
+                                </div>
+                                
+                                <button class="text-gray-600 hover:text-gray-800 ml-3">
+                                    <i data-feather="volume-2" class="h-5 w-5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Media Library Screen -->
+    <div class="app-window">
+        <div class="title-bar">
+            <span class="font-medium text-sm">YouTube 下載工具</span>
+            <div class="title-bar-controls">
+                <div class="control-button minimize-button"></div>
+                <div class="control-button maximize-button"></div>
+                <div class="control-button close-button"></div>
+            </div>
+        </div>
+        <div class="app-container">
+            <!-- Sidebar Navigation -->
+            <div class="sidebar">
+                <div class="p-4">
+                    <h2 class="text-lg font-bold text-white">YouTube 下載工具</h2>
+                </div>
+                
+                <div class="mt-6">
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="download" class="h-5 w-5 mr-3"></i>
+                        <span>下載</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 bg-indigo-600 flex items-center">
+                        <i data-feather="music" class="h-5 w-5 mr-3"></i>
+                        <span>媒體庫</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="list" class="h-5 w-5 mr-3"></i>
+                        <span>播放清單</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="clock" class="h-5 w-5 mr-3"></i>
+                        <span>下載歷史</span>
+                    </div>
+                    
+                    <div class="px-4 py-3 flex items-center text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        <i data-feather="settings" class="h-5 w-5 mr-3"></i>
+                        <span>設定</span>
+                    </div>
+                </div>
+                
+                <div class="mt-auto px-4 py-4 absolute bottom-0 w-full">
+                    <div class="text-xs text-gray-500">
+                        <p>磁碟空間：75% 使用中</p>
+                        <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                            <div class="gradient-accent h-2 rounded-full" style="width: 75%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="content">
+                <div class="main-content">
+                    <div class="mb-8">
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-xl font-bold">媒體庫</h2>
+                            
+                            <div class="flex items-center">
+                                <div class="relative mr-4">
+                                    <input type="text" placeholder="搜尋媒體庫..." class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                                        <i data-feather="search" class="h-5 w-5"></i>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex">
+                                    <button class="bg-gray-200 p-2 rounded-l-lg text-gray-700">
+                                        <i data-feather="grid" class="h-5 w-5"></i>
+                                    </button>
+                                    <button class="bg-white p-2 rounded-r-lg text-gray-400 border border-gray-300">
+                                        <i data-feather="list" class="h-5 w-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Filter Tabs -->
+                        <div class="flex border-b border-gray-200 mb-6">
+                            <button class="px-6 py-3 font-medium text-indigo-600 border-b-2 border-indigo-600">所有檔案</button>
+                            <button class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">音訊</button>
+                            <button class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">影片</button>
+                            <button class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">我的最愛</button>
+                        </div>
+                        
+                        <!-- Media Grid -->
+                        <div class="grid grid-cols-4 gap-5">
+                            <!-- Audio Item 1 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="音樂縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full">音訊</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">冥想音樂 - 放鬆心靈</h3>
+                                    <p class="text-gray-500 text-sm mb-2">放鬆音樂頻道</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">12:20 • MP3</span>
+                                        <button class="text-gray-400 hover:text-indigo-600">
+                                            <i data-feather="heart" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Video Item 1 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1611162616475-46b635cb6868?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="影片縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-green-600 text-white text-xs px-2 py-1 rounded-full">影片</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">如何使用 Python 建立桌面應用程式</h3>
+                                    <p class="text-gray-500 text-sm mb-2">程式設計教學</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">25:42 • MP4</span>
+                                        <button class="text-gray-400 hover:text-indigo-600">
+                                            <i data-feather="heart" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Audio Item 2 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1507838153414-b4b713384a76?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="音樂縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full">音訊</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">夏日流行歌曲合集</h3>
+                                    <p class="text-gray-500 text-sm mb-2">音樂電台</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">45:18 • MP3</span>
+                                        <button class="text-red-500">
+                                            <i data-feather="heart" class="h-4 w-4 fill-current"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Video Item 2 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1547394765-185e1e68f34e?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="影片縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-green-600 text-white text-xs px-2 py-1 rounded-full">影片</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">Python 基礎教學 #12</h3>
+                                    <p class="text-gray-500 text-sm mb-2">Python教學頻道</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">18:35 • MP4</span>
+                                        <button class="text-gray-400 hover:text-indigo-600">
+                                            <i data-feather="heart" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Audio Item 3 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="音樂縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full">音訊</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">電子音樂精選</h3>
+                                    <p class="text-gray-500 text-sm mb-2">DJ Station</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">62:10 • MP3</span>
+                                        <button class="text-gray-400 hover:text-indigo-600">
+                                            <i data-feather="heart" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Audio Item 4 -->
+                            <div class="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition">
+                                <div class="h-40 bg-indigo-100 relative">
+                                    <img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" alt="音樂縮圖" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                                        <button class="bg-white rounded-full p-3 shadow-lg">
+                                            <i data-feather="play" class="h-5 w-5 text-indigo-600"></i>
+                                        </button>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <span class="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full">音訊</span>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <h3 class="font-medium text-gray-900 mb-1 truncate">古典音樂 - 貝多芬精選</h3>
+                                    <p class="text-gray-500 text-sm mb-2">古典音樂頻道</p>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">78:42 • MP3</span>
+                                        <button class="text-red-500">
+                                            <i data-feather="heart" class="h-4 w-4 fill-current"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Media Player -->
+                <div class="media-player">
+                    <div class="flex items-center">
+                        <div class="w-16 h-16 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
+                            <img src="https://images.unsplash.com/photo-1507838153414-b4b713384a76?ixlib=rb-1.2.1&auto=format&fit=crop&w=64&q=80" alt="正在播放" class="w-full h-full object-cover">
+                        </div>
+                        
+                        <div class="ml-4 flex-1">
+                            <h4 class="font-medium">夏日流行歌曲合集</h4>
+                            <p class="text-sm text-gray-600">音樂電台</p>
+                            
+                            <div class="mt-2 flex items-center">
+                                <button class="text-gray-600 hover:text-gray-800 mr-5">
+                                    <i data-feather="skip-back" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <button class="bg-indigo-600 text-white p-1 rounded-full h-8 w-8 flex items-center justify-center mr-5">
+                                    <i data-feather="play" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <button class="text-gray-600 hover:text-gray-800">
+                                    <i data-feather="skip-forward" class="h-5 w-5"></i>
+                                </button>
+                                
+                                <div class="mx-5 flex-1">
+                                    <div class="w-full bg-gray-300 rounded-full h-1">
+                                        <div class="bg-indigo-600 h-1 rounded-full" style="width: 10%"></div>
+                                    </div>
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>4:25</span>
+                                        <span>45:18</span>
+                                    </div>
+                                </div>
+                                
+                                <button class="text-gray-600 hover:text-gray-800 ml-3">
+                                    <i data-feather="volume-2" class="h-5 w-5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize Feather icons
+        document.addEventListener('DOMContentLoaded', function() {
+            feather.replace();
+        });
+    </script>
+</body>
+</html> 
