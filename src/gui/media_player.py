@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSlider, QFrame, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -21,6 +21,10 @@ from src.database import db_manager, MediaType
 
 class MediaPlayerWindow(QMainWindow):
     """媒體播放器視窗，用於播放音頻和視頻"""
+    
+    # 添加信號
+    playback_started = pyqtSignal(str)  # 播放開始時發出信號
+    playback_stopped = pyqtSignal()     # 播放停止時發出信號
     
     def __init__(self, file_path: str, parent=None):
         """初始化媒體播放器視窗
@@ -32,6 +36,7 @@ class MediaPlayerWindow(QMainWindow):
         super().__init__(parent)
         self.file_path = file_path
         self.is_audio = file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac'))
+        self.parent = parent
         
         # 從資料庫獲取媒體詳情
         self.media_info = db_manager.get_media_file_by_path(file_path)
@@ -267,10 +272,14 @@ class MediaPlayerWindow(QMainWindow):
             self.media_player.pause()
         else:
             self.media_player.play()
+            # 發出播放開始信號
+            self.playback_started.emit(self.file_path)
     
     def stop_playback(self):
         """停止播放"""
         self.media_player.stop()
+        # 發出播放停止信號
+        self.playback_stopped.emit()
     
     def update_player_state(self, state):
         """根據播放器狀態更新界面"""
@@ -355,12 +364,9 @@ class MediaPlayerWindow(QMainWindow):
         print(f"播放錯誤: {error} - {error_string}")
     
     def closeEvent(self, event):
-        """視窗關閉事件處理"""
-        # 停止播放
-        self.media_player.stop()
-        
-        # 停止定時器
+        """窗口關閉事件"""
         self.update_timer.stop()
-        
-        # 接受關閉事件
+        self.media_player.stop()
+        # 發出播放停止信號
+        self.playback_stopped.emit()
         event.accept() 

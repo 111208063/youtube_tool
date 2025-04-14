@@ -10,11 +10,11 @@ from typing import List, Optional
 from PyQt6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QComboBox, QScrollArea, QMessageBox,
-    QFileDialog
+    QFileDialog, QSlider
 )
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl
-from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 # 導入資料庫模組
 from src.database import db_manager, MediaType
@@ -43,37 +43,50 @@ class MediaItem(QWidget):
     def _init_ui(self):
         """初始化用戶界面"""
         # 設置佈局
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
         
         # 縮圖區域
         self.thumbnail = QLabel()
-        self.thumbnail.setFixedSize(160, 120)
+        self.thumbnail.setFixedSize(60, 60)
         self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumbnail.setStyleSheet("background-color: #1e1e1e; border-radius: 4px;")
         
         # 如果有縮圖，載入縮圖
         if self.thumbnail_path and os.path.exists(self.thumbnail_path):
             pixmap = QPixmap(self.thumbnail_path)
-            self.thumbnail.setPixmap(pixmap.scaled(160, 120, Qt.AspectRatioMode.KeepAspectRatio))
+            self.thumbnail.setPixmap(pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio))
         else:
             # 根據檔案類型顯示默認圖標
             if self.file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac')):
                 self.thumbnail.setText("🎵")
             else:
                 self.thumbnail.setText("🎬")
-            self.thumbnail.setStyleSheet("font-size: 48px; background-color: #1e1e1e; border-radius: 4px;")
+            self.thumbnail.setStyleSheet("font-size: 24px; background-color: #1e1e1e; border-radius: 4px;")
+        
+        # 訊息區域
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(2)
         
         # 檔案名稱標籤
         self.title_label = QLabel(os.path.basename(self.file_path))
         self.title_label.setStyleSheet("color: white; font-weight: bold;")
         self.title_label.setWordWrap(True)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setMaximumWidth(160)
+        
+        # 檔案路徑標籤
+        path_label = QLabel(os.path.dirname(self.file_path))
+        path_label.setStyleSheet("color: #999; font-size: 12px;")
+        path_label.setWordWrap(True)
+        
+        info_layout.addWidget(self.title_label)
+        info_layout.addWidget(path_label)
         
         # 播放按鈕
         self.play_button = QPushButton("播放")
+        self.play_button.setFixedWidth(80)
         self.play_button.setStyleSheet("""
             QPushButton {
                 background-color: #4f46e5;
@@ -90,7 +103,7 @@ class MediaItem(QWidget):
         
         # 添加元件到佈局
         layout.addWidget(self.thumbnail)
-        layout.addWidget(self.title_label)
+        layout.addWidget(info_widget, 1)
         layout.addWidget(self.play_button)
         
         # 設置樣式和大小
@@ -103,7 +116,7 @@ class MediaItem(QWidget):
                 background-color: #383838;
             }
         """)
-        self.setFixedSize(180, 220)
+        self.setFixedHeight(80)
         
         # 設置鼠標點擊事件
         self.mousePressEvent = self.on_item_clicked
@@ -139,6 +152,11 @@ class MediaLibrary(QWidget):
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.video_dir.mkdir(parents=True, exist_ok=True)
         
+        # 當前播放的媒體
+        self.current_player = None
+        self.current_media_path = None
+        self.current_media_title = None
+        
         # 初始化UI
         self._init_ui()
         
@@ -150,9 +168,11 @@ class MediaLibrary(QWidget):
         # 主佈局
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
         # 頂部控制區域
         top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(10, 10, 10, 10)
         
         # 搜尋欄
         self.search_input = QLineEdit()
@@ -237,9 +257,9 @@ class MediaLibrary(QWidget):
         top_layout.addWidget(self.refresh_button, 1)
         
         # 媒體顯示區域
-        media_scroll = QScrollArea()
-        media_scroll.setWidgetResizable(True)
-        media_scroll.setStyleSheet("""
+        self.media_scroll = QScrollArea()
+        self.media_scroll.setWidgetResizable(True)
+        self.media_scroll.setStyleSheet("""
             QScrollArea {
                 background-color: #121212;
                 border: none;
@@ -247,95 +267,136 @@ class MediaLibrary(QWidget):
         """)
         
         media_container = QWidget()
-        self.media_layout = QGridLayout(media_container)
+        self.media_layout = QVBoxLayout(media_container)
         self.media_layout.setContentsMargins(10, 10, 10, 10)
         self.media_layout.setSpacing(10)
+        self.media_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
-        media_scroll.setWidget(media_container)
+        self.media_scroll.setWidget(media_container)
         
-        # 預覽區域
-        preview_layout = QVBoxLayout()
-        preview_layout.setContentsMargins(10, 10, 10, 10)
+        # 播放進度界面（常駐顯示）
+        self.player_bar = QWidget()
+        self.player_bar.setFixedHeight(80)
+        self.player_bar.setStyleSheet("""
+            QWidget {
+                background-color: #1a1a1a;
+                border-top: 1px solid #333333;
+            }
+        """)
         
-        self.preview_title = QLabel("未選擇媒體")
-        self.preview_title.setStyleSheet("font-size: 18px; font-weight: bold; color: white;")
+        player_layout = QHBoxLayout(self.player_bar)
+        player_layout.setContentsMargins(15, 10, 15, 10)
         
-        self.preview_info = QLabel("選擇一個媒體文件以查看詳細資訊")
-        self.preview_info.setStyleSheet("color: white;")
-        self.preview_info.setWordWrap(True)
+        # 當前播放的媒體信息
+        self.now_playing_icon = QLabel("🎵")
+        self.now_playing_icon.setStyleSheet("font-size: 24px;")
+        self.now_playing_icon.setFixedSize(40, 40)
+        self.now_playing_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # 操作按鈕
-        action_layout = QHBoxLayout()
+        self.now_playing_title = QLabel("未播放任何媒體")
+        self.now_playing_title.setStyleSheet("font-size: 14px; font-weight: bold;")
         
-        self.play_button = QPushButton("播放")
-        self.play_button.setStyleSheet("""
+        # 播放控制
+        self.play_pause_button = QPushButton("播放")
+        self.play_pause_button.setFixedSize(40, 40)
+        self.play_pause_button.setStyleSheet("""
             QPushButton {
                 background-color: #4f46e5;
+                border-radius: 20px;
                 color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #6366f1;
             }
-            QPushButton:disabled {
-                background-color: #333333;
-                color: #666666;
-            }
         """)
-        self.play_button.setEnabled(False)
-        self.play_button.clicked.connect(self.play_selected_media)
+        self.play_pause_button.clicked.connect(self.toggle_playback)
         
-        self.delete_button = QPushButton("刪除")
-        self.delete_button.setStyleSheet("""
+        self.prev_button = QPushButton("⏮")
+        self.prev_button.setFixedSize(36, 36)
+        self.prev_button.setStyleSheet("""
             QPushButton {
-                background-color: #dc2626;
+                background-color: transparent;
                 color: white;
                 border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
+                font-size: 16px;
             }
             QPushButton:hover {
-                background-color: #ef4444;
-            }
-            QPushButton:disabled {
-                background-color: #333333;
-                color: #666666;
+                color: #6366f1;
             }
         """)
-        self.delete_button.setEnabled(False)
-        self.delete_button.clicked.connect(self.delete_selected_media)
         
-        action_layout.addWidget(self.play_button)
-        action_layout.addWidget(self.delete_button)
-        
-        # 添加元件到預覽佈局
-        preview_layout.addWidget(self.preview_title)
-        preview_layout.addWidget(self.preview_info)
-        preview_layout.addLayout(action_layout)
-        preview_layout.addStretch()
-        
-        # 創建底部區域（預覽區）
-        bottom_container = QWidget()
-        bottom_container.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-                border-radius: 8px;
+        self.next_button = QPushButton("⏭")
+        self.next_button.setFixedSize(36, 36)
+        self.next_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: white;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                color: #6366f1;
             }
         """)
-        bottom_container.setLayout(preview_layout)
-        bottom_container.setFixedHeight(200)
         
-        # 添加所有佈局到主佈局
+        # 進度條
+        progress_widget = QWidget()
+        progress_layout = QVBoxLayout(progress_widget)
+        progress_layout.setContentsMargins(0, 0, 0, 0)
+        progress_layout.setSpacing(5)
+        
+        progress_bar_layout = QHBoxLayout()
+        
+        self.time_elapsed = QLabel("00:00")
+        self.time_elapsed.setStyleSheet("color: #999; font-size: 12px;")
+        
+        self.progress_slider = QSlider(Qt.Orientation.Horizontal)
+        self.progress_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #333333;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #6366f1;
+                width: 12px;
+                height: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+        """)
+        # 連接進度條的拖動事件
+        self.progress_slider.sliderMoved.connect(self.seek_position)
+        self.progress_slider.sliderPressed.connect(self.slider_pressed)
+        self.progress_slider.sliderReleased.connect(self.slider_released)
+        
+        self.time_total = QLabel("00:00")
+        self.time_total.setStyleSheet("color: #999; font-size: 12px;")
+        
+        progress_bar_layout.addWidget(self.time_elapsed)
+        progress_bar_layout.addWidget(self.progress_slider, 1)
+        progress_bar_layout.addWidget(self.time_total)
+        
+        progress_layout.addLayout(progress_bar_layout)
+        
+        # 添加元件到播放控制佈局
+        player_layout.addWidget(self.now_playing_icon)
+        player_layout.addWidget(self.now_playing_title, 1)
+        player_layout.addWidget(self.prev_button)
+        player_layout.addWidget(self.play_pause_button)
+        player_layout.addWidget(self.next_button)
+        player_layout.addWidget(progress_widget, 2)
+        
+        # 添加元件到主佈局
         main_layout.addLayout(top_layout)
-        main_layout.addWidget(media_scroll, 1)
-        main_layout.addWidget(bottom_container)
+        main_layout.addWidget(self.media_scroll, 1)
+        main_layout.addWidget(self.player_bar)
         
-        # 初始化媒體項目列表
-        self.media_items = []
+        # 選中的媒體項目
         self.selected_media_path = None
-        
+        self.selected_item = None
+    
     def refresh_media_library(self):
         """重新讀取並顯示媒體庫中的所有媒體文件"""
         # 清除當前顯示的媒體項目
@@ -344,15 +405,22 @@ class MediaLibrary(QWidget):
         # 從資料庫獲取所有媒體檔案
         media_files = db_manager.get_all_media_files()
         
-        # 將資料庫記錄轉換為路徑列表，並去除重複
-        seen_paths = set()
-        unique_file_paths = []
+        # 使用字典按檔案的名稱去重（而不僅僅是路徑）
+        # 這樣即使相同檔案存在於不同路徑，也只會顯示一次
+        unique_files_by_name = {}
         
         for media_file in media_files:
-            # 檢查文件是否存在以及路徑是否已處理過
-            if os.path.exists(media_file.file_path) and media_file.file_path not in seen_paths:
-                unique_file_paths.append(media_file.file_path)
-                seen_paths.add(media_file.file_path)
+            # 檢查文件是否存在
+            if os.path.exists(media_file.file_path):
+                # 獲取檔案名作為主要鍵
+                file_name = os.path.basename(media_file.file_path)
+                
+                # 如果這個檔案名還沒有記錄，或者當前記錄的ID更小，則更新
+                if file_name not in unique_files_by_name or media_file.id < unique_files_by_name[file_name].id:
+                    unique_files_by_name[file_name] = media_file
+        
+        # 提取唯一檔案的路徑
+        unique_file_paths = [media_file.file_path for media_file in unique_files_by_name.values()]
         
         # 顯示媒體項目
         self._display_media_items(unique_file_paths)
@@ -375,38 +443,45 @@ class MediaLibrary(QWidget):
         return files
     
     def _display_media_items(self, file_paths: List[str]):
-        """顯示媒體項目在網格中"""
+        """顯示媒體項目
+        
+        Args:
+            file_paths: 媒體文件路徑列表
+        """
         # 清除現有項目
         self._clear_media_items()
         
-        # 創建並添加新媒體項目
-        row, col = 0, 0
-        max_cols = 4  # 每行顯示的最大項目數
-        
+        # 添加媒體項目
         for file_path in file_paths:
-            # 創建媒體項目元件
             media_item = MediaItem(file_path)
             media_item.clicked.connect(self.on_media_selected)
             media_item.play_requested.connect(self.play_media)
-            
-            # 將項目添加到網格佈局
-            self.media_layout.addWidget(media_item, row, col)
-            self.media_items.append(media_item)
-            
-            # 更新行列位置
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
+            self.media_layout.addWidget(media_item)
+        
+        # 如果沒有媒體文件，顯示提示
+        if not file_paths:
+            empty_label = QLabel("沒有找到媒體文件")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("color: #999; font-size: 16px; padding: 20px;")
+            self.media_layout.addWidget(empty_label)
     
     def _clear_media_items(self):
         """清除所有媒體項目"""
-        # 刪除所有媒體項目
-        for item in self.media_items:
-            self.media_layout.removeWidget(item)
-            item.deleteLater()
+        # 完全重建媒體容器，確保所有舊項目都被刪除
+        # 首先刪除舊的容器
+        old_container = self.media_scroll.takeWidget()
+        if old_container:
+            old_container.deleteLater()
         
-        self.media_items = []
+        # 創建新的容器
+        new_container = QWidget()
+        self.media_layout = QVBoxLayout(new_container)
+        self.media_layout.setContentsMargins(10, 10, 10, 10)
+        self.media_layout.setSpacing(10)
+        self.media_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        # 設置新容器為滾動區域的窗口部件
+        self.media_scroll.setWidget(new_container)
     
     def on_media_selected(self, file_path: str):
         """處理媒體項目選擇事件"""
@@ -417,7 +492,7 @@ class MediaLibrary(QWidget):
         
         if media_file:
             # 如果資料庫中有記錄，使用資料庫中的信息
-            self.preview_title.setText(media_file.title)
+            self.now_playing_title.setText(media_file.title)
             
             # 格式化時間
             if media_file.duration:
@@ -427,79 +502,168 @@ class MediaLibrary(QWidget):
             else:
                 duration_str = "未知"
             
-            self.preview_info.setText(
-                f"檔案大小: {media_file.file_size:.2f} MB\n"
-                f"持續時間: {duration_str}\n"
-                f"上傳者: {media_file.uploader or '未知'}\n"
-                f"類型: {'音訊' if media_file.media_type == MediaType.AUDIO else '視訊'}\n"
-                f"路徑: {file_path}"
-            )
+            self.time_elapsed.setText(duration_str)
+            self.time_total.setText(duration_str)
+            self.progress_slider.setValue(0)
+            self.progress_slider.setRange(0, int(media_file.duration) if media_file.duration else 0)
         else:
             # 如果資料庫中沒有記錄，顯示基本文件信息
             file_name = os.path.basename(file_path)
             file_size = os.path.getsize(file_path) / (1024 * 1024)  # 轉換為MB
             
-            self.preview_title.setText(file_name)
-            self.preview_info.setText(f"檔案大小: {file_size:.2f} MB\n"
-                                      f"路徑: {file_path}")
+            self.now_playing_title.setText(file_name)
+            self.time_elapsed.setText("00:00")
+            self.time_total.setText("00:00")
+            self.progress_slider.setValue(0)
+            self.progress_slider.setRange(0, 0)
         
         # 啟用操作按鈕
-        self.play_button.setEnabled(True)
-        self.delete_button.setEnabled(True)
+        self.play_pause_button.setEnabled(True)
     
     def play_media(self, file_path: str):
-        """播放指定的媒體文件"""
-        # 使用新的媒體播放器視窗播放媒體
-        self.player_window = MediaPlayerWindow(file_path)
-        self.player_window.show()
+        """播放指定的媒體文件
         
-        # 當視窗關閉時清除引用
-        self.player_window.destroyed.connect(self.clear_player_reference)
-    
-    def clear_player_reference(self):
-        """清除播放器視窗的引用"""
-        if hasattr(self, 'player_window'):
-            self.player_window = None
-    
-    def play_selected_media(self):
-        """播放當前選中的媒體"""
-        if self.selected_media_path:
+        Args:
+            file_path: 媒體文件路徑
+        """
+        # 關閉現有播放器
+        if self.current_player:
+            self.current_player.close()
+        
+        # 創建新的媒體播放器 - 但不顯示視窗
+        from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+        from PyQt6.QtCore import QUrl
+        
+        # 直接創建媒體播放器和音訊輸出
+        self.media_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.media_player.setAudioOutput(self.audio_output)
+        
+        # 連接信號
+        self.media_player.positionChanged.connect(self.update_progress)
+        self.media_player.durationChanged.connect(self.update_duration)
+        self.media_player.playbackStateChanged.connect(self.update_play_state)
+        
+        # 設置媒體源
+        self.media_url = QUrl.fromLocalFile(file_path)
+        self.media_player.setSource(self.media_url)
+        
+        # 設置音量
+        self.audio_output.setVolume(0.7)
+        
+        # 自動開始播放
+        self.media_player.play()
+        
+        # 保存當前播放媒體的信息
+        self.current_media_path = file_path
+        media_file = db_manager.get_media_file_by_path(file_path)
+        if media_file:
+            self.current_media_title = media_file.title
+        else:
+            self.current_media_title = os.path.basename(file_path)
+        
+        # 更新播放進度界面
+        self.update_player_bar()
+        
+        # 選中當前播放的媒體項目
+        self.selected_media_path = file_path
+
+    def update_player_bar(self):
+        """更新播放進度界面"""
+        if self.current_media_path:
+            self.now_playing_title.setText(self.current_media_title)
+            self.play_pause_button.setText("❚❚")  # 暫停圖標
+        else:
+            self.now_playing_title.setText("未播放任何媒體")
+            self.play_pause_button.setText("▶")  # 播放圖標
+            self.time_elapsed.setText("00:00")
+            self.time_total.setText("00:00")
+            self.progress_slider.setValue(0)
+            self.progress_slider.setRange(0, 0)
+
+    def update_progress(self, position):
+        """更新播放進度
+        
+        Args:
+            position: 當前播放位置（毫秒）
+        """
+        if not self.progress_slider.isSliderDown():  # 如果滑塊不是被用戶拖動
+            self.progress_slider.setValue(position)
+            
+        # 更新已播放時間
+        seconds = position // 1000
+        minutes = seconds // 60
+        seconds %= 60
+        self.time_elapsed.setText(f"{minutes:02d}:{seconds:02d}")
+
+    def update_duration(self, duration):
+        """更新媒體總時長
+        
+        Args:
+            duration: 媒體總時長（毫秒）
+        """
+        self.progress_slider.setRange(0, duration)
+        
+        # 更新總時長
+        seconds = duration // 1000
+        minutes = seconds // 60
+        seconds %= 60
+        self.time_total.setText(f"{minutes:02d}:{seconds:02d}")
+
+    def update_play_state(self, state):
+        """更新播放狀態
+        
+        Args:
+            state: 播放狀態
+        """
+        from PyQt6.QtMultimedia import QMediaPlayer
+        
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_pause_button.setText("❚❚")  # 暫停圖標
+        else:
+            self.play_pause_button.setText("▶")  # 播放圖標
+
+    def toggle_playback(self):
+        """切換播放/暫停狀態"""
+        if hasattr(self, 'media_player'):
+            from PyQt6.QtMultimedia import QMediaPlayer
+            
+            if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                self.media_player.pause()
+            else:
+                self.media_player.play()
+        elif self.selected_media_path:
+            # 如果沒有正在播放的媒體，但有選中的媒體，播放選中的媒體
             self.play_media(self.selected_media_path)
-    
-    def delete_selected_media(self):
-        """刪除當前選中的媒體"""
-        if not self.selected_media_path:
-            return
+            
+    def reset_player_bar(self):
+        """重置播放進度界面"""
+        self.current_media_path = None
+        self.current_media_title = None
+        self.update_player_bar()
         
-        # 顯示確認對話框
-        reply = QMessageBox.question(
-            self, "確認刪除",
-            f"確定要刪除檔案 {os.path.basename(self.selected_media_path)} 嗎?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+    def seek_position(self, position):
+        """設置播放位置
         
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # 從資料庫中刪除記錄
-                db_manager.delete_media_file_by_path(self.selected_media_path)
+        Args:
+            position: 目標播放位置（毫秒）
+        """
+        if hasattr(self, 'media_player'):
+            self.media_player.setPosition(position)
+            
+    def slider_pressed(self):
+        """進度條被按下時暫停播放"""
+        if hasattr(self, 'media_player'):
+            from PyQt6.QtMultimedia import QMediaPlayer
+            self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+            if self.was_playing:
+                self.media_player.pause()
                 
-                # 刪除文件
-                os.remove(self.selected_media_path)
-                
-                # 更新UI
-                self.selected_media_path = None
-                self.preview_title.setText("未選擇媒體")
-                self.preview_info.setText("選擇一個媒體文件以查看詳細資訊")
-                self.play_button.setEnabled(False)
-                self.delete_button.setEnabled(False)
-                
-                # 重新整理媒體庫
-                self.refresh_media_library()
-                
-                QMessageBox.information(self, "刪除成功", "檔案已成功刪除")
-            except Exception as e:
-                QMessageBox.critical(self, "刪除失敗", f"無法刪除檔案: {str(e)}")
-    
+    def slider_released(self):
+        """進度條釋放時恢復播放"""
+        if hasattr(self, 'media_player') and hasattr(self, 'was_playing') and self.was_playing:
+            self.media_player.play()
+     
     def import_media(self):
         """匯入外部媒體文件到媒體庫"""
         file_dialog = QFileDialog()
@@ -580,15 +744,20 @@ class MediaLibrary(QWidget):
         else:
             filtered_files = media_files
         
-        # 僅保留存在的檔案，並去除重複
-        seen_paths = set()
-        unique_file_paths = []
+        # 按檔案名稱去重
+        unique_files_by_name = {}
         
         for media_file in filtered_files:
-            # 檢查文件是否存在以及路徑是否已處理過
-            if os.path.exists(media_file.file_path) and media_file.file_path not in seen_paths:
-                unique_file_paths.append(media_file.file_path)
-                seen_paths.add(media_file.file_path)
+            if os.path.exists(media_file.file_path):
+                # 獲取檔案名作為主要鍵
+                file_name = os.path.basename(media_file.file_path)
+                
+                # 如果這個檔案名還沒有記錄，或者當前記錄的ID更小，則更新
+                if file_name not in unique_files_by_name or media_file.id < unique_files_by_name[file_name].id:
+                    unique_files_by_name[file_name] = media_file
         
-        # 顯示過濾後的媒體檔案
-        self._display_media_items(unique_file_paths) 
+        # 提取唯一檔案的路徑
+        unique_file_paths = [media_file.file_path for media_file in unique_files_by_name.values()]
+        
+        # 更新顯示
+        self._display_media_items(unique_file_paths)

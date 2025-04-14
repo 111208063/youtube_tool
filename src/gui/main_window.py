@@ -14,7 +14,7 @@ from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QLineEdit, QComboBox, QStackedWidget, 
-    QStatusBar, QSplitter, QFileDialog, QMessageBox, QProgressBar
+    QStatusBar, QSplitter, QFileDialog, QMessageBox, QProgressBar, QFrame
 )
 
 from src.youtube_fetcher import YouTubeFetcher, MediaType, VideoQuality, AudioQuality
@@ -562,13 +562,19 @@ class MainWindow(QMainWindow):
         
         # 設置視窗屬性
         self.setWindowTitle("YouTube 下載工具")
-        self.setMinimumSize(1000, 700)
+        self.resize(1200, 800)
+        self.setMinimumSize(800, 600)
         
         # 初始化UI
         self._init_ui()
     
     def _init_ui(self):
-        """初始化用戶界面"""
+        """初始化主視窗界面"""
+        # 設置視窗標題和大小
+        self.setWindowTitle("YouTube 下載工具")
+        self.resize(1200, 800)
+        self.setMinimumSize(800, 600)
+        
         # 創建中央部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -578,122 +584,94 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # 側邊欄
+        # 左側側邊欄
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(240)
+        sidebar.setFixedWidth(200)
         sidebar.setStyleSheet("""
             #sidebar {
-                background-color: #1a1c23;
-                color: white;
+                background-color: #1a1a1a;
+                border-right: 1px solid #333333;
             }
         """)
         
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout.setSpacing(0)
+        sidebar_layout.setContentsMargins(0, 20, 0, 20)
+        sidebar_layout.setSpacing(10)
         
-        # 應用名稱
-        title_container = QWidget()
-        title_container.setStyleSheet("padding: 20px;")
-        title_layout = QVBoxLayout(title_container)
+        # 標題標籤
+        title_label = QLabel("YouTube 下載工具")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("""
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            padding: 10px;
+        """)
         
-        logo_label = QLabel("YouTube 下載工具")
-        logo_label.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
+        # 分隔線
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setStyleSheet("background-color: #333333;")
         
-        title_layout.addWidget(logo_label)
+        # 側邊欄按鈕
+        self.home_button = self._create_sidebar_button("下載頁面", "download", 0)
+        self.library_button = self._create_sidebar_button("媒體庫", "library", 1)
         
-        # 側邊欄選單
-        menu_container = QWidget()
-        menu_layout = QVBoxLayout(menu_container)
-        menu_layout.setContentsMargins(0, 0, 0, 0)
-        menu_layout.setSpacing(0)
+        # 活動按鈕
+        self.active_sidebar_button = self.home_button
+        self.home_button.setStyleSheet(self.home_button.styleSheet() + """
+            QPushButton {
+                background-color: #2d2d2d;
+                border-left: 4px solid #6366f1;
+            }
+        """)
         
-        # 創建側邊欄選單項目
-        self.download_button = self._create_sidebar_button("下載", "download", 0)
-        self.library_button = self._create_sidebar_button("媒體庫", "database", 1)
-        self.playlist_button = self._create_sidebar_button("播放清單", "list", 2)
-        self.history_button = self._create_sidebar_button("下載歷史", "clock", 3)
-        self.settings_button = self._create_sidebar_button("設定", "settings", 4)
-        
-        menu_layout.addWidget(self.download_button)
-        menu_layout.addWidget(self.library_button)
-        menu_layout.addWidget(self.playlist_button)
-        menu_layout.addWidget(self.history_button)
-        menu_layout.addWidget(self.settings_button)
-        menu_layout.addStretch()
-        
-        # 磁碟空間指示器
-        disk_widget = QWidget()
-        disk_widget.setStyleSheet("background-color: #1a1c23; padding: 15px;")
-        disk_layout = QVBoxLayout(disk_widget)
-        
-        disk_label = QLabel("磁碟空間：75% 使用中")
-        disk_label.setStyleSheet("color: #6b7280; font-size: 12px;")
-        
-        progress_bg = QWidget()
-        progress_bg.setFixedHeight(6)
-        progress_bg.setStyleSheet("background-color: #374151; border-radius: 3px;")
-        
-        progress_layout = QHBoxLayout(progress_bg)
-        progress_layout.setContentsMargins(0, 0, 0, 0)
-        
-        progress_fill = QWidget()
-        progress_fill.setFixedWidth(int(progress_bg.width() * 0.75))
-        progress_fill.setStyleSheet("background-color: #6366f1; border-radius: 3px;")
-        
-        progress_layout.addWidget(progress_fill)
-        progress_layout.addStretch()
-        
-        disk_layout.addWidget(disk_label)
-        disk_layout.addWidget(progress_bg)
-        
-        # 組合側邊欄
-        sidebar_layout.addWidget(title_container)
-        sidebar_layout.addWidget(menu_container)
+        # 添加元件到側邊欄
+        sidebar_layout.addWidget(title_label)
+        sidebar_layout.addWidget(separator)
+        sidebar_layout.addWidget(self.home_button)
+        sidebar_layout.addWidget(self.library_button)
         sidebar_layout.addStretch()
-        sidebar_layout.addWidget(disk_widget)
         
-        # 內容區域
+        # 右側內容區域
         content_area = QWidget()
-        content_area.setStyleSheet("background-color: #121212;")  # 深色背景
         content_layout = QVBoxLayout(content_area)
         content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
         
-        # 頁面堆疊
+        # 創建堆疊部件
         self.stacked_widget = QStackedWidget()
         
-        # 下載頁面
-        self.download_page = DownloadWidget(self.youtube_fetcher)
-        self.stacked_widget.addWidget(self.download_page)
+        # 添加下載頁面
+        self.download_widget = DownloadWidget(self.youtube_fetcher)
+        self.stacked_widget.addWidget(self.download_widget)
         
-        # 媒體庫頁面
-        self.library_page = MediaLibrary(str(self.download_dir))
-        self.stacked_widget.addWidget(self.library_page)
+        # 添加媒體庫頁面
+        download_dir = str(Path.home() / "Downloads" / "YouTube")
+        self.media_library = MediaLibrary(download_dir)
+        self.stacked_widget.addWidget(self.media_library)
         
-        # 其他頁面（示例）
-        self.playlists_page = QWidget()
-        self.history_page = QWidget()
-        self.settings_page = QWidget()
+        # 添加堆疊部件到內容區域
+        content_layout.addWidget(self.stacked_widget)
         
-        self.stacked_widget.addWidget(self.playlists_page)
-        self.stacked_widget.addWidget(self.history_page)
-        self.stacked_widget.addWidget(self.settings_page)
+        # 創建狀態欄
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("""
+            QStatusBar {
+                background-color: #1a1c23;
+                color: white;
+            }
+        """)
+        self.setStatusBar(self.status_bar)
+        
+        # 添加所有部件到主佈局
+        main_layout.addWidget(sidebar)
+        main_layout.addWidget(content_area, 1)
         
         # 初始顯示下載頁面
         self.stacked_widget.setCurrentIndex(0)
-        
-        content_layout.addWidget(self.stacked_widget)
-        
-        # 添加到主佈局
-        main_layout.addWidget(sidebar)
-        main_layout.addWidget(content_area)
-        
-        # 設置狀態欄
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("就緒")
-        self.status_bar.setStyleSheet("background-color: #1a1c23; color: white;")
     
     def _create_sidebar_button(self, text: str, icon_name: str, page_index: int) -> QPushButton:
         """創建側邊欄按鈕"""
@@ -733,17 +711,37 @@ class MainWindow(QMainWindow):
         return button
     
     def _on_sidebar_button_clicked(self, button: QPushButton, page_index: int):
-        """處理側邊欄按鈕點擊"""
-        # 重置所有按鈕狀態
-        for btn in [self.download_button, self.library_button, self.playlist_button, 
-                    self.history_button, self.settings_button]:
-            btn.setChecked(False)
+        """處理側邊欄按鈕點擊事件
         
-        # 設置當前按鈕為選中狀態
-        button.setChecked(True)
-        
-        # 切換到對應頁面
-        self.stacked_widget.setCurrentIndex(page_index)
+        Args:
+            button: 被點擊的按鈕
+            page_index: 對應的頁面索引
+        """
+        # 如果點擊的不是當前活動按鈕
+        if button != self.active_sidebar_button:
+            # 設置新的活動按鈕
+            self.active_sidebar_button.setStyleSheet(self.active_sidebar_button.styleSheet().replace("""
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border-left: 4px solid #6366f1;
+                }
+            """, ""))
+            
+            button.setStyleSheet(button.styleSheet() + """
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border-left: 4px solid #6366f1;
+                }
+            """)
+            
+            self.active_sidebar_button = button
+            
+            # 更換頁面
+            self.stacked_widget.setCurrentIndex(page_index)
+            
+            # 如果切換到媒體庫頁面，刷新媒體庫
+            if page_index == 1:
+                self.media_library.refresh_media_library()
 
 
 if __name__ == "__main__":
