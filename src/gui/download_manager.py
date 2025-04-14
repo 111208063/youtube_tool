@@ -100,6 +100,70 @@ class DownloadManager:
         # 回調
         self._status_callbacks: List[Callable[[str, DownloadTask], None]] = []
         
+        # 深色主題樣式設定
+        self.dark_theme_styles = {
+            "item_widget": """
+                QWidget {
+                    background-color: #1e1e1e;
+                    border-radius: 6px;
+                    color: white;
+                }
+            """,
+            "title_label": """
+                QLabel {
+                    color: white;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+            """,
+            "status_label": """
+                QLabel {
+                    color: #aaaaaa;
+                    font-size: 12px;
+                }
+            """,
+            "progress_bar": """
+                QProgressBar {
+                    border: 1px solid #444444;
+                    border-radius: 3px;
+                    text-align: center;
+                    background-color: #333333;
+                    color: white;
+                }
+                QProgressBar::chunk {
+                    background-color: #4f46e5;
+                    border-radius: 2px;
+                }
+            """,
+            "action_button": """
+                QPushButton {
+                    background-color: #333333;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #444444;
+                }
+                QPushButton:pressed {
+                    background-color: #555555;
+                }
+            """,
+            "cancel_button": """
+                QPushButton {
+                    background-color: #a11;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #c22;
+                }
+            """
+        }
+        
     def register_status_callback(self, callback: Callable[[str, DownloadTask], None]) -> None:
         """註冊下載狀態更新回調函數"""
         self._status_callbacks.append(callback)

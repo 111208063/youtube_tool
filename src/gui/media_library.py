@@ -51,7 +51,7 @@ class MediaItem(QWidget):
         self.thumbnail_label.setFixedSize(QSize(160, 90))
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
-            background-color: #f0f0f0;
+            background-color: #2a2a2a;
             border-radius: 4px;
         """)
         
@@ -72,7 +72,7 @@ class MediaItem(QWidget):
         self.name_label = QLabel(self.file_name)
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setWordWrap(True)
-        self.name_label.setStyleSheet("font-size: 12px;")
+        self.name_label.setStyleSheet("font-size: 12px; color: #ffffff;")
         
         # 按鈕
         button_layout = QHBoxLayout()
@@ -102,12 +102,13 @@ class MediaItem(QWidget):
         self.setMaximumWidth(200)
         self.setStyleSheet("""
             QWidget {
-                background-color: white;
+                background-color: #1e1e1e;
                 border-radius: 8px;
+                color: #ffffff;
             }
             QWidget:hover {
-                background-color: #f8f8f8;
-                border: 1px solid #e0e0e0;
+                background-color: #2d2d2d;
+                border: 1px solid #444444;
             }
         """)
         
@@ -167,16 +168,69 @@ class MediaLibrary(QWidget):
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["全部媒體", "音訊", "視訊"])
         self.filter_combo.currentIndexChanged.connect(self.apply_filter)
+        self.filter_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #444444;
+                padding: 5px;
+                border-radius: 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #333333;
+                color: white;
+                selection-background-color: #4f46e5;
+            }
+        """)
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("搜尋媒體檔案...")
         self.search_input.textChanged.connect(self.apply_filter)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #444444;
+                padding: 5px;
+                border-radius: 4px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #6366f1;
+            }
+        """)
         
         self.refresh_button = QPushButton("重新整理")
         self.refresh_button.clicked.connect(self.refresh_media_library)
+        self.refresh_button.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #444444;
+                padding: 5px 10px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """)
         
         self.import_button = QPushButton("匯入檔案")
         self.import_button.clicked.connect(self.import_media)
+        self.import_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #6366f1;
+            }
+        """)
         
         toolbar_layout.addWidget(QLabel("顯示:"))
         toolbar_layout.addWidget(self.filter_combo)
@@ -185,15 +239,23 @@ class MediaLibrary(QWidget):
         toolbar_layout.addWidget(self.refresh_button)
         toolbar_layout.addWidget(self.import_button)
         
-        # 主內容區域的背景色設置為灰色
-        self.setStyleSheet("background-color: #bbbbbb;")
+        # 主內容區域的背景色設置為深色
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #121212;
+                color: white;
+            }
+            QLabel {
+                color: white;
+            }
+        """)
         
         # 創建分割器：媒體庫 + 預覽面板
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # 媒體網格容器
         self.media_container = QWidget()
-        self.media_container.setStyleSheet("background-color: #bbbbbb;")
+        self.media_container.setStyleSheet("background-color: #121212;")
         self.media_layout = QGridLayout(self.media_container)
         self.media_layout.setContentsMargins(15, 15, 15, 15)
         self.media_layout.setSpacing(15)

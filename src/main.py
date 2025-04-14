@@ -38,6 +38,72 @@ def main():
     app.setStyleSheet("""
         QWidget {
             font-family: "微軟正黑體", "Microsoft JhengHei", Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+        }
+        QMainWindow, QDialog {
+            background-color: #121212;
+        }
+        QLabel {
+            color: white;
+        }
+        QPushButton {
+            background-color: #333333;
+            color: white;
+            border: 1px solid #444444;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background-color: #444444;
+        }
+        QPushButton:pressed {
+            background-color: #555555;
+        }
+        QLineEdit, QTextEdit, QComboBox {
+            background-color: #333333;
+            color: white;
+            border: 1px solid #444444;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        QLineEdit:focus, QTextEdit:focus {
+            border: 1px solid #6366f1;
+        }
+        QComboBox::drop-down {
+            border: none;
+        }
+        QComboBox QAbstractItemView {
+            background-color: #333333;
+            color: white;
+            selection-background-color: #4f46e5;
+        }
+        QScrollArea, QScrollBar {
+            background-color: #1a1a1a;
+            color: white;
+        }
+        QScrollBar:horizontal, QScrollBar:vertical {
+            background-color: #333333;
+            border: none;
+        }
+        QScrollBar::handle:horizontal, QScrollBar::handle:vertical {
+            background-color: #555555;
+            border-radius: 4px;
+        }
+        QScrollBar::handle:horizontal:hover, QScrollBar::handle:vertical:hover {
+            background-color: #666666;
+        }
+        QStatusBar {
+            background-color: #1a1c23;
+            color: white;
+        }
+        QMenu {
+            background-color: #1e1e1e;
+            color: white;
+            border: 1px solid #444444;
+        }
+        QMenu::item:selected {
+            background-color: #4f46e5;
         }
     """)
     

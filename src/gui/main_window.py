@@ -656,7 +656,7 @@ class MainWindow(QMainWindow):
         
         # 內容區域
         content_area = QWidget()
-        content_area.setStyleSheet("background-color: #bbbbbb;")  # 修改為灰色背景
+        content_area.setStyleSheet("background-color: #121212;")  # 深色背景
         content_layout = QVBoxLayout(content_area)
         content_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -693,6 +693,7 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("就緒")
+        self.status_bar.setStyleSheet("background-color: #1a1c23; color: white;")
     
     def _create_sidebar_button(self, text: str, icon_name: str, page_index: int) -> QPushButton:
         """創建側邊欄按鈕"""
