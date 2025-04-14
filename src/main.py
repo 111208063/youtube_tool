@@ -5,7 +5,14 @@ YouTube下載工具主程序
 """
 import sys
 import os
+import logging
 from pathlib import Path
+
+# 設置日誌
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # 將src目錄添加到Python路徑
 current_dir = Path(__file__).parent
@@ -21,10 +28,53 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 
 from src.gui.main_window import MainWindow
+from src.database import db_manager
+from src.database.init_db import scan_directory, add_file_to_database
+
+
+def initialize_database():
+    """初始化資料庫，掃描現有媒體檔案"""
+    logging.info("初始化資料庫...")
+    
+    # 清理資料庫中的重複記錄和不存在的檔案記錄
+    removed_duplicates, removed_nonexistent = db_manager.cleanup_database()
+    if removed_duplicates > 0 or removed_nonexistent > 0:
+        logging.info(f"資料庫清理完成：移除了 {removed_duplicates} 個重複記錄和 {removed_nonexistent} 個不存在檔案的記錄")
+    
+    # 目錄列表
+    directories = [
+        # 舊版存儲位置
+        str(parent_dir / "music"),
+        
+        # 新版存儲位置
+        str(parent_dir / "downloads" / "audio"),
+        str(parent_dir / "downloads" / "video"),
+        
+        # 下載目錄
+        str(Path.home() / "Downloads" / "YouTube" / "audio"),
+        str(Path.home() / "Downloads" / "YouTube" / "video")
+    ]
+    
+    # 掃描所有目錄並添加檔案
+    total_files = 0
+    added_files = 0
+    
+    for directory in directories:
+        media_files = scan_directory(directory)
+        total_files += len(media_files)
+        
+        for file_path in media_files:
+            if add_file_to_database(file_path):
+                added_files += 1
+    
+    logging.info(f"資料庫初始化完成，總共掃描 {total_files} 個檔案，成功添加 {added_files} 個檔案")
 
 
 def main():
     """主程序入口點"""
+    # 初始化資料庫
+    initialize_database()
+    
     # 創建應用程式
     app = QApplication(sys.argv)
     app.setApplicationName("YouTube 下載工具")
@@ -112,7 +162,14 @@ def main():
     window.show()
     
     # 執行應用程式
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    
+    # 關閉資料庫連接
+    db_manager.close()
+    logging.info("資料庫連接已關閉")
+    
+    # 退出程式
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

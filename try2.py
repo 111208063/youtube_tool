@@ -1,16 +1,27 @@
 """
 YouTube音樂下載工具 - 獨立簡易版
 
-不依賴其他模組，直接使用yt-dlp庫下載YouTube音樂，存放到music資料夾。
+使用yt-dlp庫下載YouTube音樂，將元數據儲存到資料庫，文件存放到指定資料夾。
 """
 import os
 import sys
 from pathlib import Path
 import yt_dlp
 
-def download_audio(url, output_folder="music"):
+# 確保src目錄在路徑中以便導入資料庫模組
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+try:
+    from src.database import db_manager, MediaType
+except ImportError:
+    print("無法導入資料庫模組，請確保src/database目錄存在")
+    db_manager = None
+
+def download_audio(url, output_folder="downloads/audio"):
     """
-    下載YouTube視頻的音頻
+    下載YouTube視頻的音頻並將元數據儲存到資料庫
     
     Args:
         url: YouTube URL
@@ -58,7 +69,7 @@ def download_audio(url, output_folder="music"):
                 title = entry.get('title', '未知標題')
                 uploader = entry.get('uploader', '未知頻道')
                 duration = entry.get('duration', 0)
-                
+                video_id = entry.get('id', '')
                 # 獲取單一視頻URL
                 video_url = entry.get('webpage_url', url)
             else:
@@ -66,6 +77,7 @@ def download_audio(url, output_folder="music"):
                 title = info.get('title', '未知標題')
                 uploader = info.get('uploader', '未知頻道')
                 duration = info.get('duration', 0)
+                video_id = info.get('id', '')
                 video_url = url
             
             minutes = duration // 60
@@ -75,7 +87,25 @@ def download_audio(url, output_folder="music"):
             print(f"時長: {minutes}:{seconds:02d}")
             
             print("\n開始下載音樂...")
+            # 下載視頻
             ydl.download([video_url])
+            
+            # 確定下載後的檔案路徑
+            output_file = output_path / f"{title}.mp3"
+            if output_file.exists():
+                # 添加到資料庫
+                if db_manager is not None:
+                    file_size = output_file.stat().st_size / (1024 * 1024)  # 轉換為MB
+                    db_manager.add_media_file(
+                        title=title,
+                        file_path=str(output_file),
+                        media_type=MediaType.AUDIO,
+                        file_size=file_size,
+                        duration=duration,
+                        uploader=uploader,
+                        youtube_id=video_id
+                    )
+                    print(f"已將檔案 {title} 添加到資料庫")
     
     except Exception as e:
         print(f"下載過程中發生錯誤: {e}")

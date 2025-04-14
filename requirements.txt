@@ -1,6 +1,14 @@
+# 主要依賴
 PyQt6>=6.5.0
-yt-dlp>=2023.3.4
+yt-dlp>=2023.7.6
+pytube>=15.0.0
+
+# 資料處理與資料庫
+SQLAlchemy>=2.0.0
+
+# 媒體處理
 ffmpeg-python>=0.2.0
-requests>=2.28.2
-pathlib>=1.0.1
-typing-extensions>=4.5.0
+
+# 工具庫
+requests>=2.31.0
+python-dotenv>=1.0.0

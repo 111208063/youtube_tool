@@ -380,12 +380,12 @@ class DownloadWidget(QWidget):
                 args=(url,),
                 daemon=True
             ).start()
-            QMessageBox.information(self, "開始下載", "下載已開始，將存放到music資料夾")
+            QMessageBox.information(self, "開始下載", "下載已開始，檔案將存放到downloads/audio目錄並記錄在資料庫中")
         else:
             # 使用DownloadManager進行下載
             try:
                 task_id = self.download_manager.add_download(url, media_type, quality)
-                QMessageBox.information(self, "開始下載", "下載已添加到佇列，可在下方查看進度")
+                QMessageBox.information(self, "開始下載", "下載已添加到佇列，可在下方查看進度。檔案將記錄在資料庫中")
             except Exception as e:
                 QMessageBox.critical(self, "下載失敗", f"無法添加下載任務：{str(e)}")
     
@@ -611,14 +611,14 @@ class MainWindow(QMainWindow):
         
         # 創建側邊欄選單項目
         self.download_button = self._create_sidebar_button("下載", "download", 0)
-        self.library_button = self._create_sidebar_button("媒體庫", "music", 1)
-        self.playlists_button = self._create_sidebar_button("播放清單", "list", 2)
+        self.library_button = self._create_sidebar_button("媒體庫", "database", 1)
+        self.playlist_button = self._create_sidebar_button("播放清單", "list", 2)
         self.history_button = self._create_sidebar_button("下載歷史", "clock", 3)
         self.settings_button = self._create_sidebar_button("設定", "settings", 4)
         
         menu_layout.addWidget(self.download_button)
         menu_layout.addWidget(self.library_button)
-        menu_layout.addWidget(self.playlists_button)
+        menu_layout.addWidget(self.playlist_button)
         menu_layout.addWidget(self.history_button)
         menu_layout.addWidget(self.settings_button)
         menu_layout.addStretch()
@@ -735,7 +735,7 @@ class MainWindow(QMainWindow):
     def _on_sidebar_button_clicked(self, button: QPushButton, page_index: int):
         """處理側邊欄按鈕點擊"""
         # 重置所有按鈕狀態
-        for btn in [self.download_button, self.library_button, self.playlists_button, 
+        for btn in [self.download_button, self.library_button, self.playlist_button, 
                     self.history_button, self.settings_button]:
             btn.setChecked(False)
         
