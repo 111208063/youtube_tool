@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Optional
 import threading
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QObject, QMetaObject, Q_ARG, QTimer
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QLineEdit, QComboBox, QStackedWidget, 
-    QStatusBar, QSplitter, QFileDialog, QMessageBox
+    QStatusBar, QSplitter, QFileDialog, QMessageBox, QProgressBar
 )
 
 from src.youtube_fetcher import YouTubeFetcher, MediaType, VideoQuality, AudioQuality
@@ -78,6 +78,13 @@ class DownloadWidget(QWidget):
         self.analyzer = VideoAnalyzer()
         self.analyzer.analysis_finished.connect(self.on_analysis_finished)
         self.analyzer.analysis_error.connect(self.on_analysis_error)
+        
+        # 初始化下載管理器
+        from src.gui.download_manager import DownloadManager, DownloadStatus
+        self.DownloadStatus = DownloadStatus  # 存儲為實例變數方便使用
+        download_path = Path.home() / "Downloads" / "YouTube"
+        self.download_manager = DownloadManager(download_path)
+        self.download_manager.register_status_callback(self.on_download_status_update)
         
         self._init_ui()
     
@@ -340,13 +347,34 @@ class DownloadWidget(QWidget):
             QMessageBox.warning(self, "URL錯誤", "請輸入有效的YouTube影片或播放清單URL")
             return
         
+        # 檢測是否是播放清單URL
+        is_playlist = 'list=' in url and 'watch?' in url
+        download_playlist = False
+        
+        # 如果是播放清單，詢問用戶是否下載整個播放清單
+        if is_playlist:
+            reply = QMessageBox.question(
+                self, 
+                "播放清單檢測", 
+                "檢測到可能是播放清單URL，是否下載整個播放清單？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            download_playlist = reply == QMessageBox.StandardButton.Yes
+            
+            # 如果不下載播放清單，修改URL只保留視頻ID
+            if not download_playlist:
+                video_id = url.split('v=')[1].split('&')[0]
+                url = f"https://www.youtube.com/watch?v={video_id}"
+        
         # 獲取下載選項
         is_audio = self.audio_button.isChecked()
         media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
         quality = self.quality_combo.currentData()
         
         # 使用try2.py的功能下載音訊
-        if is_audio and try2 is not None:
+        if is_audio and try2 is not None and not download_playlist:
+            # 對於單一音訊下載，繼續使用try2.py
             threading.Thread(
                 target=try2.download_audio,
                 args=(url,),
@@ -354,13 +382,169 @@ class DownloadWidget(QWidget):
             ).start()
             QMessageBox.information(self, "開始下載", "下載已開始，將存放到music資料夾")
         else:
-            # 使用youtube_fetcher進行下載
+            # 使用DownloadManager進行下載
             try:
-                # 這裡應該調用youtube_fetcher的下載方法
-                # 並顯示下載進度
-                QMessageBox.information(self, "開始下載", "下載已開始，可在下方查看進度")
+                task_id = self.download_manager.add_download(url, media_type, quality)
+                QMessageBox.information(self, "開始下載", "下載已添加到佇列，可在下方查看進度")
             except Exception as e:
-                QMessageBox.critical(self, "下載失敗", f"下載過程中發生錯誤：{str(e)}")
+                QMessageBox.critical(self, "下載失敗", f"無法添加下載任務：{str(e)}")
+    
+    @pyqtSlot(str, object)
+    def on_download_status_update(self, task_id, task):
+        """處理下載狀態更新"""
+        # 檢查是否已經存在此任務的UI項目
+        download_item = self.findChild(QWidget, f"download_item_{task_id}")
+        
+        if download_item is None and task.status != self.DownloadStatus.COMPLETED:
+            # 創建新的下載項目UI
+            download_item = self._create_download_item(task_id, task)
+            self.downloads_layout.addWidget(download_item)
+        elif download_item is not None:
+            # 更新現有的下載項目UI
+            self._update_download_item(download_item, task)
+            
+            # 如果任務已完成或失敗，在一段時間後移除項目
+            if task.status in [self.DownloadStatus.COMPLETED, self.DownloadStatus.FAILED, self.DownloadStatus.CANCELLED]:
+                # 使用計時器，延遲移除項目
+                QTimer.singleShot(5000, lambda: self._remove_download_item(download_item))
+    
+    def _create_download_item(self, task_id, task):
+        """創建下載項目UI"""
+        # 創建下載項目容器
+        item = QWidget()
+        item.setObjectName(f"download_item_{task_id}")
+        item.setMinimumHeight(80)
+        item.setMaximumHeight(80)
+        item.setStyleSheet("""
+            QWidget {
+                background-color: #f0f0f0;
+                border-radius: 8px;
+                margin: 5px 0;
+            }
+        """)
+        
+        # 項目佈局
+        layout = QHBoxLayout(item)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # 標題和狀態
+        info_layout = QVBoxLayout()
+        
+        title_label = QLabel(task.title)
+        title_label.setObjectName(f"title_{task_id}")
+        title_label.setStyleSheet("font-weight: bold;")
+        title_label.setWordWrap(True)
+        
+        status_label = QLabel(self._get_status_text(task.status))
+        status_label.setObjectName(f"status_{task_id}")
+        status_label.setStyleSheet("color: #666;")
+        
+        info_layout.addWidget(title_label)
+        info_layout.addWidget(status_label)
+        
+        # 進度條
+        progress_bar = QProgressBar()
+        progress_bar.setObjectName(f"progress_{task_id}")
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(int(task.progress))
+        progress_bar.setTextVisible(True)
+        progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #6366f1;
+                border-radius: 3px;
+            }
+        """)
+        
+        # 控制按鈕（暫停/繼續、取消）
+        buttons_layout = QVBoxLayout()
+        buttons_layout.setSpacing(5)
+        
+        # 暫停/繼續按鈕
+        pause_button = QPushButton("暫停")
+        pause_button.setObjectName(f"pause_{task_id}")
+        pause_button.setFixedSize(80, 30)
+        pause_button.clicked.connect(lambda: self._toggle_pause(task_id))
+        
+        # 取消按鈕
+        cancel_button = QPushButton("取消")
+        cancel_button.setFixedSize(80, 30)
+        cancel_button.clicked.connect(lambda: self._cancel_download(task_id))
+        
+        buttons_layout.addWidget(pause_button)
+        buttons_layout.addWidget(cancel_button)
+        
+        # 設置佈局
+        layout.addLayout(info_layout, 3)
+        layout.addWidget(progress_bar, 2)
+        layout.addLayout(buttons_layout, 1)
+        
+        return item
+    
+    def _update_download_item(self, item, task):
+        """更新下載項目UI"""
+        # 更新標題（如果需要）
+        title_label = item.findChild(QLabel, f"title_{task.id}")
+        if title_label:
+            title_label.setText(task.title)
+        
+        # 更新狀態
+        status_label = item.findChild(QLabel, f"status_{task.id}")
+        if status_label:
+            status_label.setText(self._get_status_text(task.status))
+        
+        # 更新進度條
+        progress_bar = item.findChild(QProgressBar, f"progress_{task.id}")
+        if progress_bar:
+            progress_bar.setValue(int(task.progress))
+        
+        # 更新暫停/繼續按鈕
+        pause_button = item.findChild(QPushButton, f"pause_{task.id}")
+        if pause_button:
+            if task.status == self.DownloadStatus.PAUSED:
+                pause_button.setText("繼續")
+            else:
+                pause_button.setText("暫停")
+            
+            # 禁用或啟用按鈕
+            pause_button.setEnabled(task.status in [self.DownloadStatus.DOWNLOADING, self.DownloadStatus.PAUSED])
+    
+    def _remove_download_item(self, item):
+        """移除下載項目UI"""
+        if item:
+            self.downloads_layout.removeWidget(item)
+            item.deleteLater()
+    
+    def _toggle_pause(self, task_id):
+        """切換下載任務的暫停/繼續狀態"""
+        task = self.download_manager.get_task(task_id)
+        if not task:
+            return
+        
+        if task.status == self.DownloadStatus.PAUSED:
+            self.download_manager.resume_download(task_id)
+        else:
+            self.download_manager.pause_download(task_id)
+    
+    def _cancel_download(self, task_id):
+        """取消下載任務"""
+        self.download_manager.cancel_download(task_id)
+    
+    def _get_status_text(self, status):
+        """獲取下載狀態的顯示文本"""
+        status_texts = {
+            self.DownloadStatus.PENDING: "等待中...",
+            self.DownloadStatus.DOWNLOADING: "下載中...",
+            self.DownloadStatus.PAUSED: "已暫停",
+            self.DownloadStatus.COMPLETED: "下載完成",
+            self.DownloadStatus.FAILED: "下載失敗",
+            self.DownloadStatus.CANCELLED: "已取消"
+        }
+        return status_texts.get(status, "未知狀態")
 
 
 class MainWindow(QMainWindow):

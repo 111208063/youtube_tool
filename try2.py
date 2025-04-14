@@ -40,67 +40,42 @@ def download_audio(url, output_folder="music"):
         # 判斷是否為播放清單URL
         is_playlist = 'list=' in url and 'watch?' in url
         
-        # 如果是播放清單，詢問使用者是否要下載整個播放清單
+        # 如果是播放清單，但我們只要下載單一影片，移除播放清單參數
         if is_playlist:
-            choice = input("檢測到可能是播放清單URL，是否下載整個播放清單? (y/n): ").lower()
-            if choice == 'y':
-                # 使用者選擇下載整個播放清單
-                ydl_opts['noplaylist'] = False
-                print("將下載整個播放清單...")
-            else:
-                print("將只下載單一影片...")
-                # 確保不會下載播放清單
-                # 移除播放清單參數
-                if 'list=' in url and 'watch?' in url:
-                    # 只保留影片ID部分
-                    video_id = url.split('v=')[1].split('&')[0]
-                    url = f"https://www.youtube.com/watch?v={video_id}"
+            # 確保不會下載播放清單
+            # 移除播放清單參數
+            video_id = url.split('v=')[1].split('&')[0]
+            url = f"https://www.youtube.com/watch?v={video_id}"
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # 首先獲取信息（不下載）
             info = ydl.extract_info(url, download=False)
             
-            # 檢查是否仍然是播放清單
-            if 'entries' in info and ydl_opts['noplaylist'] == False:
-                # 這是播放清單
-                entries = list(info['entries'])
-                print(f"檢測到播放清單: {info.get('title', '未知播放清單')}")
-                print(f"共 {len(entries)} 個視頻")
+            # 單個視頻
+            if 'entries' in info and len(info['entries']) > 0:
+                # 如果仍然返回多個，只取第一個
+                entry = info['entries'][0]
+                title = entry.get('title', '未知標題')
+                uploader = entry.get('uploader', '未知頻道')
+                duration = entry.get('duration', 0)
                 
-                # 顯示播放清單中的前幾個視頻
-                for i, entry in enumerate(entries[:5], 1):
-                    print(f"{i}. {entry.get('title', '未知標題')}")
-                if len(entries) > 5:
-                    print(f"...以及其他 {len(entries) - 5} 個視頻")
-                
-                print("開始下載播放清單...")
-                ydl.download([url])
+                # 獲取單一視頻URL
+                video_url = entry.get('webpage_url', url)
             else:
-                # 單個視頻
-                if 'entries' in info and len(info['entries']) > 0:
-                    # 如果仍然返回多個，只取第一個
-                    entry = info['entries'][0]
-                    title = entry.get('title', '未知標題')
-                    uploader = entry.get('uploader', '未知頻道')
-                    duration = entry.get('duration', 0)
-                    
-                    # 獲取單一視頻URL
-                    video_url = entry.get('webpage_url', url)
-                else:
-                    # 直接使用視頻信息
-                    title = info.get('title', '未知標題')
-                    uploader = info.get('uploader', '未知頻道')
-                    duration = info.get('duration', 0)
-                    video_url = url
-                
-                minutes = duration // 60
-                seconds = duration % 60
-                print(f"視頻: {title}")
-                print(f"頻道: {uploader}")
-                print(f"時長: {minutes}:{seconds:02d}")
-                
-                print("\n開始下載音樂...")
-                ydl.download([video_url])
+                # 直接使用視頻信息
+                title = info.get('title', '未知標題')
+                uploader = info.get('uploader', '未知頻道')
+                duration = info.get('duration', 0)
+                video_url = url
+            
+            minutes = duration // 60
+            seconds = duration % 60
+            print(f"視頻: {title}")
+            print(f"頻道: {uploader}")
+            print(f"時長: {minutes}:{seconds:02d}")
+            
+            print("\n開始下載音樂...")
+            ydl.download([video_url])
     
     except Exception as e:
         print(f"下載過程中發生錯誤: {e}")
