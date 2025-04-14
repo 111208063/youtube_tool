@@ -621,10 +621,20 @@ class MainWindow(QMainWindow):
         
         # 活動按鈕
         self.active_sidebar_button = self.home_button
-        self.home_button.setStyleSheet(self.home_button.styleSheet() + """
+        self.home_button.setStyleSheet("""
             QPushButton {
-                background-color: #2d2d2d;
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                padding: 10px 20px;
+                color: white;
+                font-size: 14px;
+                background-color: #4f46e5;
+                font-weight: bold;
                 border-left: 4px solid #6366f1;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
             }
         """)
         
@@ -676,7 +686,7 @@ class MainWindow(QMainWindow):
     def _create_sidebar_button(self, text: str, icon_name: str, page_index: int) -> QPushButton:
         """創建側邊欄按鈕"""
         button = QPushButton(text)
-        button.setCheckable(True)
+        button.setCheckable(False)  # 設置為不可勾選
         button.setFixedHeight(48)
         button.setStyleSheet("""
             QPushButton {
@@ -686,24 +696,16 @@ class MainWindow(QMainWindow):
                 padding: 10px 20px;
                 color: #9ca3af;
                 font-size: 14px;
+                background-color: transparent;
             }
             QPushButton:hover {
                 background-color: #2d3748;
-            }
-            QPushButton:checked {
-                background-color: #4f46e5;
-                color: white;
-                font-weight: bold;
             }
         """)
         
         # 設置圖標（實際使用需載入正確的圖標）
         # button.setIcon(QIcon(f"icons/{icon_name}.png"))
         # button.setIconSize(QSize(20, 20))
-        
-        # 設置為第一個按鈕初始為選中狀態
-        if page_index == 0:
-            button.setChecked(True)
         
         # 連接點擊事件
         button.clicked.connect(lambda: self._on_sidebar_button_clicked(button, page_index))
@@ -717,31 +719,63 @@ class MainWindow(QMainWindow):
             button: 被點擊的按鈕
             page_index: 對應的頁面索引
         """
-        # 如果點擊的不是當前活動按鈕
-        if button != self.active_sidebar_button:
-            # 設置新的活動按鈕
-            self.active_sidebar_button.setStyleSheet(self.active_sidebar_button.styleSheet().replace("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    border-left: 4px solid #6366f1;
-                }
-            """, ""))
-            
-            button.setStyleSheet(button.styleSheet() + """
-                QPushButton {
-                    background-color: #2d2d2d;
-                    border-left: 4px solid #6366f1;
-                }
-            """)
-            
-            self.active_sidebar_button = button
-            
-            # 更換頁面
-            self.stacked_widget.setCurrentIndex(page_index)
-            
-            # 如果切換到媒體庫頁面，刷新媒體庫
-            if page_index == 1:
-                self.media_library.refresh_media_library()
+        # 重置所有按鈕的樣式
+        self.home_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                padding: 10px 20px;
+                color: #9ca3af;
+                font-size: 14px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #2d3748;
+            }
+        """)
+        
+        self.library_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                padding: 10px 20px;
+                color: #9ca3af;
+                font-size: 14px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #2d3748;
+            }
+        """)
+        
+        # 設置被點擊按鈕的活動樣式
+        button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                padding: 10px 20px;
+                color: white;
+                font-size: 14px;
+                background-color: #4f46e5;
+                font-weight: bold;
+                border-left: 4px solid #6366f1;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
+            }
+        """)
+        
+        self.active_sidebar_button = button
+        
+        # 更換頁面
+        self.stacked_widget.setCurrentIndex(page_index)
+        
+        # 如果切換到媒體庫頁面，刷新媒體庫
+        if page_index == 1:
+            self.media_library.refresh_media_library()
 
 
 if __name__ == "__main__":
