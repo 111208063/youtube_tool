@@ -10,7 +10,7 @@ from typing import List, Optional
 from PyQt6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QComboBox, QScrollArea, QMessageBox,
-    QFileDialog, QSlider
+    QFileDialog, QSlider, QMenu
 )
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl
@@ -26,6 +26,7 @@ class MediaItem(QWidget):
     
     clicked = pyqtSignal(str)  # 發出被點擊的媒體文件路徑
     play_requested = pyqtSignal(str)  # 請求播放指定媒體
+    delete_requested = pyqtSignal(str)  # 請求刪除指定媒體
     
     def __init__(self, file_path: str, thumbnail_path: Optional[str] = None, parent=None):
         """初始化媒體項目元件
@@ -39,7 +40,11 @@ class MediaItem(QWidget):
         self.file_path = file_path
         self.thumbnail_path = thumbnail_path
         self.is_playing = False
+        self.is_checked = False
+        self.delete_mode = False
         self._init_ui()
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
     
     def _init_ui(self):
         """初始化用戶界面"""
@@ -47,6 +52,27 @@ class MediaItem(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
+        
+        # 勾選框（初始時隱藏）- 使用QCheckBox而非QLabel
+        self.check_box = QPushButton()
+        self.check_box.setFixedSize(30, 30)
+        self.check_box.setCheckable(True)
+        self.check_box.setChecked(False)
+        self.check_box.clicked.connect(self.on_checkbox_clicked)
+        self.check_box.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #6366f1;
+                border-radius: 15px;
+            }
+            QPushButton:checked {
+                background-color: #6366f1;
+                border: 2px solid white;
+                border-radius: 15px;
+                text-align: center;
+            }
+        """)
+        self.check_box.hide()  # 初始時隱藏
         
         # 縮圖區域
         self.thumbnail = QLabel()
@@ -104,6 +130,7 @@ class MediaItem(QWidget):
         self.play_button.clicked.connect(self.on_play_clicked)
         
         # 添加元件到佈局
+        layout.addWidget(self.check_box)
         layout.addWidget(self.thumbnail)
         layout.addWidget(info_widget, 1)
         layout.addWidget(self.play_button)
@@ -140,6 +167,82 @@ class MediaItem(QWidget):
         """
         self.is_playing = is_playing
         self.play_button.setText("❚❚" if is_playing else "▶")  # 根據狀態顯示暫停或播放圖標
+    
+    def set_delete_mode(self, enabled: bool):
+        """設置刪除模式
+        
+        Args:
+            enabled: 是否啟用刪除模式
+        """
+        self.delete_mode = enabled
+        self.check_box.setVisible(enabled)
+        self.play_button.setVisible(not enabled)
+        # 重置選中狀態
+        if not enabled:
+            self.is_checked = False
+            self.check_box.setChecked(False)
+    
+    def toggle_checked(self):
+        """切換勾選狀態"""
+        self.is_checked = not self.is_checked
+        self.check_box.setChecked(self.is_checked)
+    
+    def on_checkbox_clicked(self):
+        """處理勾選框點擊事件"""
+        self.is_checked = self.check_box.isChecked()
+        self.clicked.emit(self.file_path)  # 發出點擊信號
+    
+    def mousePressEvent(self, event):
+        """鼠標點擊事件處理"""
+        if self.delete_mode:
+            self.toggle_checked()
+            # 發出點擊信號，但需要區分是否處於刪除模式
+            self.clicked.emit(self.file_path)
+        else:
+            # 原有的點擊處理
+            self.on_item_clicked(event)
+
+    def show_context_menu(self, position):
+        """顯示上下文菜單
+        
+        Args:
+            position: 菜單顯示位置
+        """
+        # 創建菜單
+        context_menu = QMenu(self)
+        context_menu.setStyleSheet("""
+            QMenu {
+                background-color: #1e1e1e;
+                color: white;
+                border: 1px solid #444444;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #4f46e5;
+            }
+        """)
+        
+        # 添加菜單項
+        play_action = context_menu.addAction("播放")
+        delete_action = context_menu.addAction("刪除")
+        
+        # 顯示菜單並獲取所選擇的動作
+        action = context_menu.exec(self.mapToGlobal(position))
+        
+        # 處理動作
+        if action == play_action:
+            self.play_requested.emit(self.file_path)
+        elif action == delete_action:
+            # 發出刪除請求信號
+            # 我們需要在MediaLibrary類中添加一個刪除單個文件的方法
+            # 先定義一個刪除信號
+            from PyQt6.QtCore import pyqtSignal
+            if not hasattr(self.__class__, 'delete_requested'):
+                self.__class__.delete_requested = pyqtSignal(str)
+            self.delete_requested.emit(self.file_path)
 
 
 class MediaLibrary(QWidget):
@@ -260,12 +363,69 @@ class MediaLibrary(QWidget):
         """)
         self.refresh_button.clicked.connect(self.refresh_media_library)
         
+        # 刪除按鈕
+        self.delete_button = QPushButton("批量刪除")  # 修改按鈕文本
+        self.delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #ef4444;
+            }
+            QPushButton:disabled {
+                background-color: #7f1d1d;
+                color: #d1d5db;
+            }
+        """)
+        self.delete_button.clicked.connect(self.toggle_delete_mode)
+        
+        # 確認刪除按鈕（初始時隱藏）
+        self.confirm_delete_button = QPushButton("確認刪除")
+        self.confirm_delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #ef4444;
+            }
+        """)
+        self.confirm_delete_button.clicked.connect(self.delete_selected_media)
+        self.confirm_delete_button.hide()
+        
+        # 取消刪除按鈕（初始時隱藏）
+        self.cancel_delete_button = QPushButton("取消")
+        self.cancel_delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #444444;
+                padding: 8px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """)
+        self.cancel_delete_button.clicked.connect(self.cancel_delete_mode)
+        self.cancel_delete_button.hide()
+        
         # 添加元件到頂部佈局
         top_layout.addWidget(self.search_input, 3)
         top_layout.addWidget(self.filter_combo, 1)
         top_layout.addWidget(self.search_button, 1)
         top_layout.addWidget(self.import_button, 1)
         top_layout.addWidget(self.refresh_button, 1)
+        top_layout.addWidget(self.delete_button, 1)
+        top_layout.addWidget(self.confirm_delete_button, 1)
+        top_layout.addWidget(self.cancel_delete_button, 1)
         
         # 媒體顯示區域
         self.media_scroll = QScrollArea()
@@ -407,6 +567,10 @@ class MediaLibrary(QWidget):
         # 選中的媒體項目
         self.selected_media_path = None
         self.selected_item = None
+        
+        # 刪除模式標誌
+        self.is_delete_mode = False
+        self.selected_for_deletion = set()
     
     def refresh_media_library(self):
         """重新讀取並顯示媒體庫中的所有媒體文件"""
@@ -467,6 +631,9 @@ class MediaLibrary(QWidget):
             media_item = MediaItem(file_path)
             media_item.clicked.connect(self.on_media_selected)
             media_item.play_requested.connect(self.play_media)
+            # 連接刪除信號
+            if hasattr(media_item.__class__, 'delete_requested'):
+                media_item.delete_requested.connect(self.delete_single_media)
             self.media_layout.addWidget(media_item)
         
         # 如果沒有媒體文件，顯示提示
@@ -496,6 +663,18 @@ class MediaLibrary(QWidget):
     
     def on_media_selected(self, file_path: str):
         """處理媒體項目選擇事件"""
+        if self.is_delete_mode:
+            # 在刪除模式下，將文件路徑添加到/從刪除集合中移除
+            if file_path in self.selected_for_deletion:
+                self.selected_for_deletion.remove(file_path)
+            else:
+                self.selected_for_deletion.add(file_path)
+            
+            # 更新確認刪除按鈕狀態
+            self.confirm_delete_button.setEnabled(len(self.selected_for_deletion) > 0)
+            return
+        
+        # 非刪除模式下的原有行為
         self.selected_media_path = file_path
         
         # 從資料庫獲取檔案信息
@@ -828,3 +1007,123 @@ class MediaLibrary(QWidget):
                              widget.file_path == self.current_media_path and
                              self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState)
                 widget.update_play_state(is_playing)
+
+    def toggle_delete_mode(self):
+        """切換刪除模式"""
+        self.is_delete_mode = not self.is_delete_mode
+        
+        # 顯示/隱藏相關按鈕
+        self.delete_button.setVisible(not self.is_delete_mode)
+        self.confirm_delete_button.setVisible(self.is_delete_mode)
+        self.cancel_delete_button.setVisible(self.is_delete_mode)
+        
+        # 禁用/啟用其他按鈕
+        self.search_button.setEnabled(not self.is_delete_mode)
+        self.import_button.setEnabled(not self.is_delete_mode)
+        self.refresh_button.setEnabled(not self.is_delete_mode)
+        self.filter_combo.setEnabled(not self.is_delete_mode)
+        self.search_input.setEnabled(not self.is_delete_mode)
+        
+        # 重置刪除選擇
+        self.selected_for_deletion.clear()
+        
+        # 更新所有媒體項的顯示狀態
+        for i in range(self.media_layout.count()):
+            widget = self.media_layout.itemAt(i).widget()
+            if isinstance(widget, MediaItem):
+                widget.set_delete_mode(self.is_delete_mode)
+
+    def cancel_delete_mode(self):
+        """取消刪除模式"""
+        if self.is_delete_mode:
+            self.toggle_delete_mode()
+
+    def delete_selected_media(self):
+        """刪除選中的媒體文件"""
+        if not self.selected_for_deletion:
+            return
+        
+        # 顯示確認對話框
+        count = len(self.selected_for_deletion)
+        reply = QMessageBox.question(
+            self, "確認刪除",
+            f"確定要刪除選中的 {count} 個媒體文件嗎？此操作不可撤銷。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 遍歷執行刪除
+        deleted_count = 0
+        for file_path in list(self.selected_for_deletion):  # 使用list創建副本，因為我們會在循環中修改集合
+            try:
+                # 停止播放（如果正在播放的文件被刪除）
+                if hasattr(self, 'current_media_path') and self.current_media_path == file_path:
+                    if hasattr(self, 'media_player'):
+                        self.media_player.stop()
+                    self.reset_player_bar()
+                
+                # 從資料庫中移除
+                db_manager.delete_media_file_by_path(file_path)
+                
+                # 從檔案系統刪除
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                
+                deleted_count += 1
+                self.selected_for_deletion.remove(file_path)
+            except Exception as e:
+                QMessageBox.warning(self, "刪除失敗", f"檔案 {os.path.basename(file_path)} 刪除失敗: {str(e)}")
+        
+        # 顯示成功訊息
+        if deleted_count > 0:
+            QMessageBox.information(self, "刪除成功", f"成功刪除 {deleted_count} 個媒體文件。")
+        
+        # 刷新媒體庫
+        self.refresh_media_library()
+        
+        # 退出刪除模式
+        self.toggle_delete_mode()
+
+    def delete_single_media(self, file_path: str):
+        """刪除單個媒體文件
+        
+        Args:
+            file_path: 要刪除的文件路徑
+        """
+        # 顯示確認對話框
+        file_name = os.path.basename(file_path)
+        reply = QMessageBox.question(
+            self, "確認刪除",
+            f"確定要刪除 {file_name} 嗎？此操作不可撤銷。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        try:
+            # 停止播放（如果正在播放的文件被刪除）
+            if hasattr(self, 'current_media_path') and self.current_media_path == file_path:
+                if hasattr(self, 'media_player'):
+                    self.media_player.stop()
+                self.reset_player_bar()
+            
+            # 從資料庫中移除
+            db_manager.delete_media_file_by_path(file_path)
+            
+            # 從檔案系統刪除
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            
+            # 顯示成功訊息
+            QMessageBox.information(self, "刪除成功", f"成功刪除 {file_name}。")
+            
+            # 刷新媒體庫
+            self.refresh_media_library()
+        
+        except Exception as e:
+            QMessageBox.warning(self, "刪除失敗", f"檔案 {file_name} 刪除失敗: {str(e)}")
