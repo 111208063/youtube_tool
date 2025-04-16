@@ -38,6 +38,7 @@ class MediaItem(QWidget):
         super().__init__(parent)
         self.file_path = file_path
         self.thumbnail_path = thumbnail_path
+        self.is_playing = False
         self._init_ui()
     
     def _init_ui(self):
@@ -84,8 +85,8 @@ class MediaItem(QWidget):
         info_layout.addWidget(self.title_label)
         info_layout.addWidget(path_label)
         
-        # 播放按鈕
-        self.play_button = QPushButton("播放")
+        # 播放按鈕 - 使用圖標而非文字
+        self.play_button = QPushButton("▶")  # 預設播放圖標
         self.play_button.setFixedWidth(80)
         self.play_button.setStyleSheet("""
             QPushButton {
@@ -94,6 +95,7 @@ class MediaItem(QWidget):
                 color: white;
                 padding: 5px 10px;
                 border-radius: 4px;
+                font-size: 16px;
             }
             QPushButton:hover {
                 background-color: #6366f1;
@@ -127,8 +129,17 @@ class MediaItem(QWidget):
         event.accept()
     
     def on_play_clicked(self):
-        """播放按鈕被點擊時發出播放請求信號"""
+        """播放按鈕被點擊時發出播放請求信號或切換播放狀態"""
         self.play_requested.emit(self.file_path)
+    
+    def update_play_state(self, is_playing: bool):
+        """更新播放狀態
+        
+        Args:
+            is_playing: 是否正在播放
+        """
+        self.is_playing = is_playing
+        self.play_button.setText("❚❚" if is_playing else "▶")  # 根據狀態顯示暫停或播放圖標
 
 
 class MediaLibrary(QWidget):
@@ -526,47 +537,88 @@ class MediaLibrary(QWidget):
         Args:
             file_path: 媒體文件路徑
         """
-        # 關閉現有播放器
-        if self.current_player:
-            self.current_player.close()
+        try:
+            # 如果現有播放器正在播放同一個文件，則切換播放/暫停狀態
+            if hasattr(self, 'media_player') and self.current_media_path == file_path:
+                from PyQt6.QtMultimedia import QMediaPlayer
+                if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                    self.media_player.pause()
+                else:
+                    self.media_player.play()
+                return
+            
+            # 先停止和釋放現有播放器資源
+            if hasattr(self, 'media_player'):
+                try:
+                    # 先暫停並停止播放
+                    self.media_player.pause()
+                    self.media_player.stop()
+                    
+                    # 斷開所有信號連接
+                    self.media_player.positionChanged.disconnect()
+                    self.media_player.durationChanged.disconnect()
+                    self.media_player.playbackStateChanged.disconnect()
+                except Exception:
+                    # 忽略可能的錯誤（例如，信號未連接）
+                    pass
+            
+            # 關閉現有播放器窗口（如果存在）
+            if self.current_player:
+                try:
+                    self.current_player.close()
+                except Exception:
+                    pass
+            
+            # 創建新的媒體播放器 - 但不顯示視窗
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PyQt6.QtCore import QUrl
+            
+            # 直接創建媒體播放器和音訊輸出
+            self.media_player = QMediaPlayer()
+            self.audio_output = QAudioOutput()
+            self.media_player.setAudioOutput(self.audio_output)
+            
+            # 連接信號
+            self.media_player.positionChanged.connect(self.update_progress)
+            self.media_player.durationChanged.connect(self.update_duration)
+            self.media_player.playbackStateChanged.connect(self.update_play_state)
+            
+            # 設置媒體源
+            self.media_url = QUrl.fromLocalFile(file_path)
+            self.media_player.setSource(self.media_url)
+            
+            # 設置音量
+            self.audio_output.setVolume(0.7)
+            
+            # 保存當前播放器引用
+            self.current_player = self.media_player
+            
+            # 保存當前播放媒體的信息
+            self.current_media_path = file_path
+            media_file = db_manager.get_media_file_by_path(file_path)
+            if media_file:
+                self.current_media_title = media_file.title
+            else:
+                self.current_media_title = os.path.basename(file_path)
+            
+            # 更新播放進度界面
+            self.update_player_bar()
+            
+            # 選中當前播放的媒體項目
+            self.selected_media_path = file_path
+            
+            # 更新所有媒體項的播放狀態
+            self._update_all_media_items_play_state()
+            
+            # 自動開始播放 - 放在最後，確保一切設置完成後再播放
+            self.media_player.play()
         
-        # 創建新的媒體播放器 - 但不顯示視窗
-        from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-        from PyQt6.QtCore import QUrl
-        
-        # 直接創建媒體播放器和音訊輸出
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.media_player.setAudioOutput(self.audio_output)
-        
-        # 連接信號
-        self.media_player.positionChanged.connect(self.update_progress)
-        self.media_player.durationChanged.connect(self.update_duration)
-        self.media_player.playbackStateChanged.connect(self.update_play_state)
-        
-        # 設置媒體源
-        self.media_url = QUrl.fromLocalFile(file_path)
-        self.media_player.setSource(self.media_url)
-        
-        # 設置音量
-        self.audio_output.setVolume(0.7)
-        
-        # 自動開始播放
-        self.media_player.play()
-        
-        # 保存當前播放媒體的信息
-        self.current_media_path = file_path
-        media_file = db_manager.get_media_file_by_path(file_path)
-        if media_file:
-            self.current_media_title = media_file.title
-        else:
-            self.current_media_title = os.path.basename(file_path)
-        
-        # 更新播放進度界面
-        self.update_player_bar()
-        
-        # 選中當前播放的媒體項目
-        self.selected_media_path = file_path
+        except Exception as e:
+            import traceback
+            print(f"播放媒體發生錯誤: {e}")
+            print(traceback.format_exc())
+            # 重置播放狀態
+            self.reset_player_bar()
 
     def update_player_bar(self):
         """更新播放進度界面"""
@@ -622,6 +674,9 @@ class MediaLibrary(QWidget):
             self.play_pause_button.setText("❚❚")  # 暫停圖標
         else:
             self.play_pause_button.setText("▶")  # 播放圖標
+        
+        # 同步更新所有媒體項的播放狀態
+        self._update_all_media_items_play_state()
 
     def toggle_playback(self):
         """切換播放/暫停狀態"""
@@ -761,3 +816,15 @@ class MediaLibrary(QWidget):
         
         # 更新顯示
         self._display_media_items(unique_file_paths)
+
+    def _update_all_media_items_play_state(self):
+        """更新所有媒體項的播放狀態"""
+        # 遍歷佈局中的所有媒體項
+        for i in range(self.media_layout.count()):
+            widget = self.media_layout.itemAt(i).widget()
+            if isinstance(widget, MediaItem):
+                # 更新媒體項的播放狀態
+                is_playing = (hasattr(self, 'media_player') and 
+                             widget.file_path == self.current_media_path and
+                             self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState)
+                widget.update_play_state(is_playing)
