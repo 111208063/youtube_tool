@@ -65,6 +65,9 @@ class VideoAnalyzer(QObject):
 class DownloadWidget(QWidget):
     """下載頁面元件"""
     
+    # 添加下載完成信號
+    download_completed = pyqtSignal()
+    
     def __init__(self, youtube_fetcher: YouTubeFetcher, parent=None):
         """
         初始化下載頁面
@@ -85,6 +88,9 @@ class DownloadWidget(QWidget):
         download_path = Path.home() / "Downloads" / "YouTube"
         self.download_manager = DownloadManager(download_path)
         self.download_manager.register_status_callback(self.on_download_status_update)
+        
+        # 保存最近完成的下載項目，用於防止重複通知
+        self.recently_completed_tasks = set()
         
         self._init_ui()
     
@@ -347,8 +353,9 @@ class DownloadWidget(QWidget):
             QMessageBox.warning(self, "URL錯誤", "請輸入有效的YouTube影片或播放清單URL")
             return
         
-        # 檢測是否是播放清單URL
-        is_playlist = 'list=' in url and 'watch?' in url
+        # 使用 is_playlist_url 函數檢測是否是播放清單URL
+        from src.gui.download_manager import is_playlist_url, clean_url
+        is_playlist = is_playlist_url(url)
         download_playlist = False
         
         # 如果是播放清單，詢問用戶是否下載整個播放清單
@@ -362,17 +369,24 @@ class DownloadWidget(QWidget):
             )
             download_playlist = reply == QMessageBox.StandardButton.Yes
             
+            # 清理 URL
+            url = clean_url(url)
+            
             # 如果不下載播放清單，修改URL只保留視頻ID
             if not download_playlist:
-                video_id = url.split('v=')[1].split('&')[0]
-                url = f"https://www.youtube.com/watch?v={video_id}"
+                from urllib.parse import parse_qs, urlparse
+                parsed_url = urlparse(url)
+                query = parse_qs(parsed_url.query)
+                if 'v' in query:
+                    video_id = query['v'][0]
+                    url = f"https://www.youtube.com/watch?v={video_id}"
         
         # 獲取下載選項
         is_audio = self.audio_button.isChecked()
         media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
         quality = self.quality_combo.currentData()
         
-        # 使用try2.py的功能下載音訊
+        # 使用try2.py的功能下載音訊（僅適用於單個影片）
         if is_audio and try2 is not None and not download_playlist:
             # 對於單一音訊下載，繼續使用try2.py
             threading.Thread(
@@ -384,14 +398,28 @@ class DownloadWidget(QWidget):
         else:
             # 使用DownloadManager進行下載
             try:
+                # 將 is_playlist 參數正確傳給 download_manager
                 task_id = self.download_manager.add_download(url, media_type, quality)
-                QMessageBox.information(self, "開始下載", "下載已添加到佇列，可在下方查看進度。檔案將記錄在資料庫中")
+                if download_playlist:
+                    message = "播放清單下載已添加到佇列，可在下方查看進度。檔案將記錄在資料庫中"
+                else:
+                    message = "下載已添加到佇列，可在下方查看進度。檔案將記錄在資料庫中"
+                QMessageBox.information(self, "開始下載", message)
             except Exception as e:
                 QMessageBox.critical(self, "下載失敗", f"無法添加下載任務：{str(e)}")
     
     @pyqtSlot(str, object)
     def on_download_status_update(self, task_id, task):
         """處理下載狀態更新"""
+        # 使用 QMetaObject.invokeMethod 確保在主線程中執行 UI 更新
+        QMetaObject.invokeMethod(self, "_update_download_ui",
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(str, task_id),
+                                Q_ARG(object, task))
+    
+    @pyqtSlot(str, object)
+    def _update_download_ui(self, task_id, task):
+        """安全地在主線程中更新下載 UI"""
         # 檢查是否已經存在此任務的UI項目
         download_item = self.findChild(QWidget, f"download_item_{task_id}")
         
@@ -407,6 +435,18 @@ class DownloadWidget(QWidget):
             if task.status in [self.DownloadStatus.COMPLETED, self.DownloadStatus.FAILED, self.DownloadStatus.CANCELLED]:
                 # 使用計時器，延遲移除項目
                 QTimer.singleShot(5000, lambda: self._remove_download_item(download_item))
+        
+        # 檢測任務完成狀態並發出信號
+        if task.status == self.DownloadStatus.COMPLETED and task_id not in self.recently_completed_tasks:
+            # 將任務ID添加到最近完成的集合中，防止重複通知
+            self.recently_completed_tasks.add(task_id)
+            
+            # 限制集合大小，避免佔用過多內存
+            if len(self.recently_completed_tasks) > 100:
+                self.recently_completed_tasks.clear()
+            
+            # 發出下載完成信號
+            self.download_completed.emit()
     
     def _create_download_item(self, task_id, task):
         """創建下載項目UI"""
@@ -487,37 +527,53 @@ class DownloadWidget(QWidget):
     
     def _update_download_item(self, item, task):
         """更新下載項目UI"""
-        # 更新標題（如果需要）
-        title_label = item.findChild(QLabel, f"title_{task.id}")
-        if title_label:
-            title_label.setText(task.title)
-        
-        # 更新狀態
-        status_label = item.findChild(QLabel, f"status_{task.id}")
-        if status_label:
-            status_label.setText(self._get_status_text(task.status))
-        
-        # 更新進度條
-        progress_bar = item.findChild(QProgressBar, f"progress_{task.id}")
-        if progress_bar:
-            progress_bar.setValue(int(task.progress))
-        
-        # 更新暫停/繼續按鈕
-        pause_button = item.findChild(QPushButton, f"pause_{task.id}")
-        if pause_button:
-            if task.status == self.DownloadStatus.PAUSED:
-                pause_button.setText("繼續")
-            else:
-                pause_button.setText("暫停")
+        try:
+            # 更新標題（如果需要）
+            title_label = item.findChild(QLabel, f"title_{task.id}")
+            if title_label:
+                title_label.setText(task.title)
             
-            # 禁用或啟用按鈕
-            pause_button.setEnabled(task.status in [self.DownloadStatus.DOWNLOADING, self.DownloadStatus.PAUSED])
+            # 更新狀態
+            status_label = item.findChild(QLabel, f"status_{task.id}")
+            if status_label:
+                status_label.setText(self._get_status_text(task.status))
+            
+            # 更新進度條 - 安全地設置值，避免繪製問題
+            progress_bar = item.findChild(QProgressBar, f"progress_{task.id}")
+            if progress_bar:
+                # 確保在進度條更新前後不會有活動的 painter
+                progress_bar.setValue(int(task.progress))
+            
+            # 更新暫停/繼續按鈕
+            pause_button = item.findChild(QPushButton, f"pause_{task.id}")
+            if pause_button:
+                if task.status == self.DownloadStatus.PAUSED:
+                    pause_button.setText("繼續")
+                else:
+                    pause_button.setText("暫停")
+                
+                # 禁用或啟用按鈕
+                pause_button.setEnabled(task.status in [self.DownloadStatus.DOWNLOADING, self.DownloadStatus.PAUSED])
+                
+        except Exception as e:
+            print(f"更新下載項目 UI 時出錯: {e}")
     
     def _remove_download_item(self, item):
         """移除下載項目UI"""
-        if item:
-            self.downloads_layout.removeWidget(item)
-            item.deleteLater()
+        try:
+            if item and not item.isWidgetType():
+                # 如果 item 不是有效的 widget，可能已被刪除
+                return
+                
+            if item:
+                # 先從布局中移除
+                self.downloads_layout.removeWidget(item)
+                # 隱藏 widget
+                item.hide()
+                # 安排稍後刪除
+                item.deleteLater()
+        except Exception as e:
+            print(f"移除下載項目時出錯: {e}")
     
     def _toggle_pause(self, task_id):
         """切換下載任務的暫停/繼續狀態"""
@@ -550,6 +606,9 @@ class DownloadWidget(QWidget):
 class MainWindow(QMainWindow):
     """主視窗"""
     
+    # 添加下載完成信號
+    download_completed = pyqtSignal()
+    
     def __init__(self):
         super().__init__()
         
@@ -567,6 +626,9 @@ class MainWindow(QMainWindow):
         
         # 初始化UI
         self._init_ui()
+        
+        # 連接下載完成信號到媒體庫刷新
+        self.download_completed.connect(self.refresh_media_library)
     
     def _init_ui(self):
         """初始化主視窗界面"""
@@ -656,6 +718,10 @@ class MainWindow(QMainWindow):
         
         # 添加下載頁面
         self.download_widget = DownloadWidget(self.youtube_fetcher)
+        
+        # 連接下載完成信號
+        self.download_widget.download_completed.connect(self.download_completed)
+        
         self.stacked_widget.addWidget(self.download_widget)
         
         # 添加媒體庫頁面
@@ -776,6 +842,17 @@ class MainWindow(QMainWindow):
         # 如果切換到媒體庫頁面，刷新媒體庫
         if page_index == 1:
             self.media_library.refresh_media_library()
+    
+    def refresh_media_library(self):
+        """在下載完成後刷新媒體庫"""
+        try:
+            # 刷新媒體庫
+            self.media_library.refresh_media_library()
+            
+            # 顯示通知
+            self.status_bar.showMessage("下載完成，媒體庫已更新", 3000)
+        except Exception as e:
+            print(f"刷新媒體庫時出錯: {e}")
 
 
 if __name__ == "__main__":

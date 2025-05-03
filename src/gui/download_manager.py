@@ -17,8 +17,41 @@ from pathlib import Path
 from queue import Queue
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse, parse_qs
 
 from src.youtube_fetcher import AudioQuality, DownloadProgress, MediaType, VideoInfo, VideoQuality, YouTubeFetcher
+import yt_dlp
+
+
+def clean_url(url):
+    """
+    移除 YouTube URL 中的多餘參數，只保留必要的 v 和 list 參數
+    
+    Args:
+        url: YouTube URL
+        
+    Returns:
+        清理後的 URL
+    """
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    safe_params = {k: v for k, v in query.items() if k in ['v', 'list']}
+    new_query = '&'.join([f"{k}={v[0]}" for k, v in safe_params.items()])
+    return f"https://www.youtube.com{parsed.path}?{new_query}"
+
+def is_playlist_url(url):
+    """
+    判斷 URL 是否為播放清單
+    
+    Args:
+        url: YouTube URL
+        
+    Returns:
+        是否為播放清單
+    """
+    parsed_url = urlparse(url)
+    query = parse_qs(parsed_url.query)
+    return 'list' in query
 
 
 class DownloadStatus(Enum):
@@ -170,11 +203,20 @@ class DownloadManager:
         
     def _notify_status_update(self, task_id: str) -> None:
         """通知所有回調下載狀態有更新"""
-        with self.lock:
-            task = self.tasks.get(task_id)
-            if task:
-                for callback in self._status_callbacks:
+        try:
+            with self.lock:
+                task = self.tasks.get(task_id)
+                if not task:
+                    return
+                    
+            # 在鎖外調用回調，避免死鎖
+            for callback in self._status_callbacks:
+                try:
                     callback(task_id, task)
+                except Exception as e:
+                    print(f"狀態更新回調執行失敗: {e}")
+        except Exception as e:
+            print(f"通知狀態更新時出錯: {e}")
     
     def add_download(
         self, 
@@ -197,6 +239,12 @@ class DownloadManager:
             ValueError: URL無效或無法解析
             RuntimeError: 其他下載過程中的錯誤
         """
+        # 檢查是否是播放清單URL
+        is_playlist = is_playlist_url(url)
+        
+        # 清理URL
+        url = clean_url(url)
+        
         # 提取影片信息
         try:
             info = self.fetcher.extract_info(url)
@@ -207,64 +255,51 @@ class DownloadManager:
         task_id = str(uuid.uuid4())
         
         # 處理播放清單和單個影片
-        if isinstance(info, list):  # 播放清單
+        if isinstance(info, list) and len(info) > 0:  # 播放清單
+            # 獲取播放清單標題
+            playlist_title = f"播放清單 ({len(info)} 個項目)"
+            
             # 建立主任務 (播放清單)
-            playlist_task = DownloadTask(
+            task = DownloadTask(
                 id=task_id,
                 url=url,
-                title=f"播放清單 ({len(info)} 個項目)",
+                title=playlist_title,
                 thumbnail_url=info[0].thumbnail_url if info else "",
                 status=DownloadStatus.PENDING,
                 media_type=media_type,
                 quality=quality,
                 progress=0.0,
-                is_playlist=True,
-                playlist_items=[]
-            )
-            
-            # 為每個影片創建子任務
-            for video_info in info:
-                child_id = str(uuid.uuid4())
-                child_task = DownloadTask(
-                    id=child_id,
-                    url=f"https://www.youtube.com/watch?v={video_info.video_id}",
-                    title=video_info.title,
-                    thumbnail_url=video_info.thumbnail_url,
-                    status=DownloadStatus.PENDING,
-                    media_type=media_type,
-                    quality=quality,
-                    progress=0.0,
-                    video_info=video_info
-                )
-                
-                with self.lock:
-                    self.tasks[child_id] = child_task
-                    playlist_task.playlist_items.append(child_id)
-                    self.task_queue.put(child_id)
-            
-            with self.lock:
-                self.tasks[task_id] = playlist_task
-                
-            self._notify_status_update(task_id)
-            return task_id
-            
-        else:  # 單個影片
-            task = DownloadTask(
-                id=task_id,
-                url=url,
-                title=info.title,
-                thumbnail_url=info.thumbnail_url,
-                status=DownloadStatus.PENDING,
-                media_type=media_type,
-                quality=quality,
-                progress=0.0,
-                video_info=info
+                is_playlist=True
             )
             
             with self.lock:
                 self.tasks[task_id] = task
                 self.task_queue.put(task_id)
-                
+            
+            self._notify_status_update(task_id)
+            return task_id
+        else:
+            # 單個影片 - 無論是單獨URL還是播放清單中的第一個影片
+            # 確保我們有一個 VideoInfo 對象
+            video_info = info if not isinstance(info, list) else info[0]
+            
+            task = DownloadTask(
+                id=task_id,
+                url=url,
+                title=video_info.title,
+                thumbnail_url=video_info.thumbnail_url,
+                status=DownloadStatus.PENDING,
+                media_type=media_type,
+                quality=quality,
+                progress=0.0,
+                video_info=video_info,
+                is_playlist=is_playlist  # 標記為播放清單，即使我們只處理一個任務
+            )
+            
+            with self.lock:
+                self.tasks[task_id] = task
+                self.task_queue.put(task_id)
+            
             self._notify_status_update(task_id)
             return task_id
     
@@ -321,26 +356,68 @@ class DownloadManager:
         try:
             # 建立進度回調函數
             def progress_callback(progress: DownloadProgress) -> None:
-                with self.lock:
-                    if task_id in self.paused_tasks:
-                        raise InterruptedError("下載已暫停")
-                    
-                    if task_id in self.tasks:
-                        self.tasks[task_id].progress = progress.percent
+                try:
+                    with self.lock:
+                        if task_id in self.paused_tasks:
+                            raise InterruptedError("下載已暫停")
                         
-                        # 更新文件大小信息
-                        if progress.total_bytes and not self.tasks[task_id].file_size:
-                            self.tasks[task_id].file_size = progress.total_bytes
-                
-                self._notify_status_update(task_id)
+                        if task_id in self.tasks:
+                            self.tasks[task_id].progress = progress.percent
+                            
+                            # 更新文件大小信息
+                            if progress.total_bytes and not self.tasks[task_id].file_size:
+                                self.tasks[task_id].file_size = progress.total_bytes
+                    
+                    # 在鎖外通知狀態更新
+                    self._notify_status_update(task_id)
+                except InterruptedError:
+                    # 重新拋出中斷錯誤
+                    raise
+                except Exception as e:
+                    print(f"進度回調執行錯誤: {e}")
+            
+            # 檢查是否是播放清單URL
+            is_playlist = task.is_playlist
             
             # 執行下載
-            file_path = self.fetcher.download(
-                url=task.url,
-                media_type=task.media_type,
-                quality=task.quality,
-                progress_callback=progress_callback
-            )
+            if not is_playlist:
+                # 下載單個影片
+                file_path = self.fetcher.download(
+                    url=task.url,
+                    media_type=task.media_type,
+                    quality=task.quality,
+                    progress_callback=progress_callback
+                )
+            else:
+                # 下載播放清單，使用try.py中的方法
+                try:
+                    # 創建自定義的下載選項
+                    if task.media_type == MediaType.AUDIO:
+                        ydl_opts = self.fetcher._get_audio_options(task.quality, progress_callback)
+                    else:
+                        ydl_opts = self.fetcher._get_video_options(task.quality, progress_callback)
+                    
+                    # 設置下載整個播放清單的選項 (重要)
+                    ydl_opts['noplaylist'] = False
+                    
+                    # 使用標準輸出模板
+                    ydl_opts['outtmpl'] = f"{str(output_dir)}/%(title)s.%(ext)s"
+                    
+                    # 確保在大型播放清單不會卡住（限制下載數量為100）
+                    ydl_opts['playlistend'] = 100
+                    
+                    # 清理URL確保正確格式
+                    url = clean_url(task.url)
+                    
+                    # 直接使用yt-dlp下載
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
+                        file_path = str(output_dir)  # 使用輸出目錄作為file_path
+                except Exception as e:
+                    # 播放清單下載出錯，記錄錯誤訊息並拋出異常
+                    error_msg = f"播放清單下載失敗: {str(e)}"
+                    print(f"[錯誤] {error_msg}")
+                    raise ValueError(error_msg)
             
             # 更新任務狀態為已完成
             with self.lock:

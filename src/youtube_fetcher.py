@@ -71,12 +71,13 @@ class YouTubeFetcher:
         self.temp_path = Path(temp_path) if temp_path else Path(tempfile.gettempdir()) / "youtube_dl"
         self.temp_path.mkdir(parents=True, exist_ok=True)
     
-    def extract_info(self, url: str) -> Union[VideoInfo, List[VideoInfo]]:
+    def extract_info(self, url: str, max_playlist_items: int = 100) -> Union[VideoInfo, List[VideoInfo]]:
         """
         提取視頻或播放清單的基本信息
         
         Args:
             url: YouTube URL，可以是視頻或播放清單
+            max_playlist_items: 播放清單最大提取項目數量，避免大型播放清單導致過多API調用
             
         Returns:
             單個視頻信息或視頻信息列表(播放清單)
@@ -90,6 +91,7 @@ class YouTubeFetcher:
             'noplaylist': False,  # 允許處理播放清單
             'skip_download': True,  # 僅提取信息，不下載
             'extract_flat': 'in_playlist',  # 對於播放清單中的項目不提取完整信息
+            'playlistend': max_playlist_items,  # 限制播放清單項目數量
         }
         
         try:
@@ -100,20 +102,32 @@ class YouTubeFetcher:
                 if 'entries' in info:
                     # 是播放清單
                     videos = []
-                    for entry in info['entries']:
-                        # 對於播放清單項目，我們需要單獨提取完整信息
+                    entries = info.get('entries', [])
+                    
+                    # 如果條目過多，限制數量避免過度請求
+                    if len(entries) > max_playlist_items:
+                        entries = entries[:max_playlist_items]
+                    
+                    # 採用更高效的方法: 
+                    # 1) 對於播放清單僅提取基本信息
+                    # 2) 避免每個視頻重新發起API請求
+                    for entry in entries:
                         if entry:
                             try:
-                                # 使用視頻ID或URL獲取詳細信息
-                                video_url = entry.get('url') or entry.get('webpage_url')
-                                if not video_url and 'id' in entry:
-                                    video_url = f"https://www.youtube.com/watch?v={entry['id']}"
-                                
-                                if video_url:
-                                    single_info = ydl.extract_info(video_url, download=False)
-                                    videos.append(self._info_to_video_info(single_info))
+                                video_info = VideoInfo(
+                                    id=entry.get('id', ''),
+                                    title=entry.get('title', '未知標題'),
+                                    thumbnail_url=entry.get('thumbnail', ''),
+                                    duration=entry.get('duration', 0) or 0,
+                                    channel=entry.get('uploader', entry.get('channel', '未知頻道')),
+                                    upload_date=entry.get('upload_date', ''),
+                                    description=entry.get('description', ''),
+                                    url=entry.get('webpage_url', '') or f"https://www.youtube.com/watch?v={entry.get('id', '')}"
+                                )
+                                videos.append(video_info)
                             except Exception as e:
                                 print(f"無法提取播放清單項目信息: {e}")
+                    
                     return videos
                 else:
                     # 單個視頻
