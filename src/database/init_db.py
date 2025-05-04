@@ -59,26 +59,34 @@ def scan_directory(directory: str) -> list:
     return media_files
 
 
-def add_file_to_database(file_path: str) -> bool:
+def add_file_to_database(file_path: str) -> int:
     """將檔案添加到資料庫
     
     Args:
         file_path: 檔案路徑
         
     Returns:
-        是否成功添加
+        int: 0=失敗，1=添加成功，2=更新成功
     """
     try:
         # 檢查檔案是否存在
         if not os.path.exists(file_path):
             logging.warning(f"檔案不存在: {file_path}")
-            return False
+            return 0
         
         # 檢查是否已在資料庫中
         existing = db_manager.get_media_file_by_path(file_path)
         if existing:
-            logging.info(f"檔案已在資料庫中: {file_path}")
-            return True
+            # 檢查檔案是否有變更（例如大小變化）
+            current_size = os.path.getsize(file_path) / (1024 * 1024)  # 轉換為MB
+            if abs(existing.file_size - current_size) > 0.1:  # 允許0.1MB的誤差
+                # 檔案大小變更，更新記錄
+                db_manager.update_media_file_size(file_path, current_size)
+                logging.info(f"檔案大小已更新: {file_path}")
+                return 2
+            
+            logging.debug(f"檔案已在資料庫中: {file_path}")
+            return 2  # 已存在並已更新
         
         # 獲取檔案基本資訊
         file_name = os.path.basename(file_path)
@@ -88,20 +96,36 @@ def add_file_to_database(file_path: str) -> bool:
         is_audio = file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac'))
         media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
         
+        # 尋找相關縮圖
+        thumbnail_path = ""
+        try:
+            # 1. 嘗試從檔名中提取YouTube ID
+            import re
+            match = re.search(r'([-\w]{11})', file_name)
+            if match:
+                youtube_id = match.group(1)
+                # 2. 查找對應的縮圖
+                thumbnail_file = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) / "downloads" / "thumbnails" / f"{youtube_id}.jpg"
+                if thumbnail_file.exists():
+                    thumbnail_path = str(thumbnail_file)
+        except Exception as e:
+            logging.warning(f"尋找縮圖時出錯: {e}")
+        
         # 添加到資料庫
         db_manager.add_media_file(
             title=file_name,
             file_path=file_path,
             media_type=media_type,
-            file_size=file_size
+            file_size=file_size,
+            thumbnail_path=thumbnail_path
         )
         
         logging.info(f"已添加到資料庫: {file_name}")
-        return True
+        return 1  # 新添加
     
     except Exception as e:
         logging.error(f"添加檔案 {file_path} 到資料庫失敗: {str(e)}")
-        return False
+        return 0  # 失敗
 
 
 def main():
@@ -110,14 +134,14 @@ def main():
     
     # 目錄列表
     directories = [
-        # 舊版存儲位置
-        os.path.join(root_dir, "music"),
-        
-        # 新版存儲位置
+        # 新版統一存儲位置
         os.path.join(root_dir, "downloads", "audio"),
         os.path.join(root_dir, "downloads", "video"),
         
-        # 下載目錄
+        # 舊版存儲位置
+        os.path.join(root_dir, "music"),
+        
+        # 備份下載目錄（如果有需要）
         os.path.join(Path.home(), "Downloads", "YouTube", "audio"),
         os.path.join(Path.home(), "Downloads", "YouTube", "video")
     ]

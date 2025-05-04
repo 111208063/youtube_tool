@@ -579,26 +579,49 @@ class MediaLibrary(QWidget):
         
         # 從資料庫獲取所有媒體檔案
         media_files = db_manager.get_all_media_files()
-        
-        # 使用字典按檔案的名稱去重（而不僅僅是路徑）
-        # 這樣即使相同檔案存在於不同路徑，也只會顯示一次
-        unique_files_by_name = {}
+        file_paths_from_db = []
+        thumbnail_paths = {}
         
         for media_file in media_files:
             # 檢查文件是否存在
             if os.path.exists(media_file.file_path):
-                # 獲取檔案名作為主要鍵
-                file_name = os.path.basename(media_file.file_path)
-                
-                # 如果這個檔案名還沒有記錄，或者當前記錄的ID更小，則更新
-                if file_name not in unique_files_by_name or media_file.id < unique_files_by_name[file_name].id:
-                    unique_files_by_name[file_name] = media_file
+                file_paths_from_db.append(media_file.file_path)
+                # 記錄縮圖路徑（如果有）
+                if hasattr(media_file, 'thumbnail_path') and media_file.thumbnail_path and os.path.exists(media_file.thumbnail_path):
+                    thumbnail_paths[media_file.file_path] = media_file.thumbnail_path
         
-        # 提取唯一檔案的路徑
-        unique_file_paths = [media_file.file_path for media_file in unique_files_by_name.values()]
+        # 同時也直接掃描下載目錄以確保顯示所有下載的檔案
+        # 這樣即使資料庫沒有記錄，也能顯示檔案
+        files_from_scan = []
+        for directory in [self.audio_dir, self.video_dir]:
+            files_from_scan.extend(self._scan_directory(directory))
         
-        # 顯示媒體項目
-        self._display_media_items(unique_file_paths)
+        # 合併兩個來源的檔案列表，去重
+        unique_files = set(file_paths_from_db + files_from_scan)
+        
+        # 確保檔案存在且不是重複的
+        valid_files = []
+        seen_filenames = set()
+        
+        for file_path in unique_files:
+            if os.path.exists(file_path):
+                filename = os.path.basename(file_path)
+                if filename not in seen_filenames:
+                    valid_files.append(file_path)
+                    seen_filenames.add(filename)
+                    
+                    # 檢查檔案是否存在於資料庫
+                    if file_path not in file_paths_from_db:
+                        # 如果不在資料庫中，添加到資料庫
+                        try:
+                            from src.database.init_db import add_file_to_database
+                            add_file_to_database(file_path)
+                            print(f"已添加新檔案到資料庫: {file_path}")
+                        except Exception as e:
+                            print(f"添加檔案到資料庫失敗: {e}")
+        
+        # 顯示媒體項目，使用縮圖路徑
+        self._display_media_items_with_thumbnails(valid_files, thumbnail_paths)
     
     def _scan_directory(self, directory: Path) -> List[str]:
         """
@@ -617,18 +640,21 @@ class MediaLibrary(QWidget):
         
         return files
     
-    def _display_media_items(self, file_paths: List[str]):
-        """顯示媒體項目
+    def _display_media_items_with_thumbnails(self, file_paths: List[str], thumbnail_paths: dict):
+        """顯示帶縮圖的媒體項目
         
         Args:
             file_paths: 媒體文件路徑列表
+            thumbnail_paths: 檔案路徑到縮圖路徑的映射
         """
         # 清除現有項目
         self._clear_media_items()
         
         # 添加媒體項目
         for file_path in file_paths:
-            media_item = MediaItem(file_path)
+            # 使用縮圖路徑創建媒體項目
+            thumbnail_path = thumbnail_paths.get(file_path)
+            media_item = MediaItem(file_path, thumbnail_path)
             media_item.clicked.connect(self.on_media_selected)
             media_item.play_requested.connect(self.play_media)
             # 連接刪除信號
@@ -952,49 +978,53 @@ class MediaLibrary(QWidget):
             self.refresh_media_library()
     
     def apply_filter(self):
-        """應用過濾條件"""
-        filter_type = self.filter_combo.currentText()
+        """應用搜尋和過濾"""
         search_text = self.search_input.text().lower()
+        filter_type = self.filter_combo.currentText()
         
-        # 根據過濾類型和搜尋文字從資料庫獲取媒體檔案
-        if filter_type == "音訊":
-            # 獲取音訊檔案
-            media_files = db_manager.get_media_files_by_type(MediaType.AUDIO)
-        elif filter_type == "視訊":
-            # 獲取視訊檔案
-            media_files = db_manager.get_media_files_by_type(MediaType.VIDEO)
-        else:
-            # 獲取所有媒體檔案
-            media_files = db_manager.get_all_media_files()
+        # 從資料庫獲取所有媒體檔案
+        media_files = db_manager.get_all_media_files()
+        filtered_file_paths = []
+        thumbnail_paths = {}
         
-        # 根據搜尋文字過濾
-        if search_text:
-            # 從資料庫搜尋
-            search_results = db_manager.search_media_files(search_text)
+        for media_file in media_files:
+            # 檢查檔案是否存在
+            if not os.path.exists(media_file.file_path):
+                continue
             
-            # 找出交集
-            filtered_files = [media_file for media_file in media_files 
-                             if any(media_file.id == sr.id for sr in search_results)]
-        else:
-            filtered_files = media_files
-        
-        # 按檔案名稱去重
-        unique_files_by_name = {}
-        
-        for media_file in filtered_files:
-            if os.path.exists(media_file.file_path):
-                # 獲取檔案名作為主要鍵
-                file_name = os.path.basename(media_file.file_path)
-                
-                # 如果這個檔案名還沒有記錄，或者當前記錄的ID更小，則更新
-                if file_name not in unique_files_by_name or media_file.id < unique_files_by_name[file_name].id:
-                    unique_files_by_name[file_name] = media_file
-        
-        # 提取唯一檔案的路徑
-        unique_file_paths = [media_file.file_path for media_file in unique_files_by_name.values()]
+            # 檢查媒體類型過濾條件
+            if filter_type == "音訊" and media_file.media_type != "audio":
+                continue
+            elif filter_type == "視訊" and media_file.media_type != "video":
+                continue
+            
+            # 檢查搜尋條件（標題、上傳者）
+            file_name = os.path.basename(media_file.file_path).lower()
+            uploader = media_file.uploader.lower() if hasattr(media_file, 'uploader') and media_file.uploader else ""
+            
+            if search_text and search_text not in file_name and search_text not in uploader:
+                continue
+            
+            # 加入過濾後的檔案列表
+            filtered_file_paths.append(media_file.file_path)
+            
+            # 記錄縮圖路徑（如果有）
+            if hasattr(media_file, 'thumbnail_path') and media_file.thumbnail_path and os.path.exists(media_file.thumbnail_path):
+                thumbnail_paths[media_file.file_path] = media_file.thumbnail_path
         
         # 更新顯示
-        self._display_media_items(unique_file_paths)
+        unique_file_paths = []
+        seen_filenames = set()
+        
+        # 確保檔案列表不含重複項目
+        for file_path in filtered_file_paths:
+            filename = os.path.basename(file_path)
+            if filename not in seen_filenames:
+                unique_file_paths.append(file_path)
+                seen_filenames.add(filename)
+        
+        # 更新顯示
+        self._display_media_items_with_thumbnails(unique_file_paths, thumbnail_paths)
 
     def _update_all_media_items_play_state(self):
         """更新所有媒體項的播放狀態"""

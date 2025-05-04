@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from src.youtube_fetcher import YouTubeFetcher, MediaType, VideoQuality, AudioQuality
 from src.gui.media_library import MediaLibrary
+from src.utils.thumbnail_utils import download_thumbnail, extract_video_id, get_thumbnail_url_from_video_id
 
 # 導入try2.py中的功能
 try:
@@ -55,8 +56,16 @@ class VideoAnalyzer(QObject):
                     'uploader': info.get('uploader', '未知頻道'),
                     'duration': info.get('duration', 0),
                     'webpage_url': info.get('webpage_url', url),
-                    'thumbnail': info.get('thumbnail', '')
+                    'thumbnail': info.get('thumbnail', ''),
+                    'id': info.get('id', '')
                 }
+                
+                # 下載縮圖
+                if video_info['thumbnail'] and video_info['id']:
+                    # 下載縮圖到本地
+                    thumbnail_path = download_thumbnail(video_info['id'], video_info['thumbnail'])
+                    if thumbnail_path:
+                        video_info['local_thumbnail'] = thumbnail_path
                 
                 self.analysis_finished.emit(video_info)
         except Exception as e:
@@ -86,7 +95,12 @@ class DownloadWidget(QWidget):
         # 初始化下載管理器
         from src.gui.download_manager import DownloadManager, DownloadStatus
         self.DownloadStatus = DownloadStatus  # 存儲為實例變數方便使用
-        download_path = Path.home() / "Downloads" / "YouTube"
+        
+        # 使用與main_window相同的下載路徑
+        root_dir = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        download_path = root_dir / "downloads"
+        download_path.mkdir(parents=True, exist_ok=True)
+        
         self.download_manager = DownloadManager(download_path)
         self.download_manager.register_status_callback(self.on_download_status_update)
         
@@ -319,6 +333,9 @@ class DownloadWidget(QWidget):
     @pyqtSlot(dict)
     def on_analysis_finished(self, video_info):
         """當影片分析完成時被呼叫"""
+        # 保存當前分析的影片資訊，方便下載時使用
+        self.current_video_info = video_info
+        
         # 更新UI
         self.title_label.setText(video_info['title'])
         
@@ -330,12 +347,54 @@ class DownloadWidget(QWidget):
         # 設置頻道和時長信息
         self.channel_label.setText(f"頻道：{video_info['uploader']} • {minutes}:{seconds:02d}")
         
+        # 顯示縮圖
+        if 'local_thumbnail' in video_info and video_info['local_thumbnail']:
+            # 使用本地下載的縮圖
+            pixmap = QPixmap(video_info['local_thumbnail'])
+            if not pixmap.isNull():
+                # 縮放縮圖以適應標籤大小
+                pixmap = pixmap.scaled(self.thumbnail_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self.thumbnail_label.setPixmap(pixmap)
+        elif 'thumbnail' in video_info and video_info['thumbnail']:
+            # 如果沒有本地縮圖但有URL，可以啟動異步下載顯示
+            self.thumbnail_label.setText("正在載入縮圖...")
+            # 啟動異步線程下載縮圖
+            threading.Thread(
+                target=self._download_and_show_thumbnail,
+                args=(video_info['id'], video_info['thumbnail']),
+                daemon=True
+            ).start()
+        else:
+            # 沒有縮圖時顯示佔位符
+            self.thumbnail_label.setText("無縮圖")
+        
         # 顯示預覽區域
         self.preview_widget.setVisible(True)
         
         # 重置分析按鈕
         self.analyze_button.setEnabled(True)
         self.analyze_button.setText("分析")
+    
+    def _download_and_show_thumbnail(self, video_id, thumbnail_url):
+        """下載並顯示縮圖"""
+        try:
+            # 下載縮圖
+            thumbnail_path = download_thumbnail(video_id, thumbnail_url)
+            if thumbnail_path:
+                # 在主線程中更新UI
+                pixmap = QPixmap(thumbnail_path)
+                if not pixmap.isNull():
+                    # 縮放縮圖以適應標籤大小
+                    pixmap = pixmap.scaled(self.thumbnail_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    # 在主線程中安全地更新UI
+                    QMetaObject.invokeMethod(
+                        self.thumbnail_label,
+                        "setPixmap",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(QPixmap, pixmap)
+                    )
+        except Exception as e:
+            print(f"下載顯示縮圖時出錯：{e}")
     
     @pyqtSlot(str)
     def on_analysis_error(self, error_msg):
@@ -453,7 +512,8 @@ class DownloadWidget(QWidget):
                 
                 # 啟動下載線程，傳入進度回調
                 # 使用與 DownloadManager 相同的下載路徑，確保一致性
-                audio_dir = str(self.download_manager.download_path / "audio")
+                root_dir = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                audio_dir = str(root_dir / "downloads" / "audio")
                 threading.Thread(
                     target=try2.download_audio,
                     args=(url, audio_dir, progress_callback),
@@ -683,7 +743,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         
         # 設置下載目錄
-        self.download_dir = Path.home() / "Downloads" / "YouTube"
+        root_dir = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        self.download_dir = root_dir / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
         
         # 創建YouTube下載器
@@ -795,7 +856,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.download_widget)
         
         # 添加媒體庫頁面
-        download_dir = str(Path.home() / "Downloads" / "YouTube")
+        download_dir = str(self.download_dir)
         self.media_library = MediaLibrary(download_dir)
         self.stacked_widget.addWidget(self.media_library)
         

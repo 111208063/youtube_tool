@@ -32,7 +32,7 @@ except ImportError:
             self.eta = eta
             self.filename = filename
 
-def download_audio(url, output_folder="downloads/audio", progress_callback: Optional[Callable[[Any], None]] = None):
+def download_audio(url, output_folder="downloads/audio", progress_callback: Optional[Callable[[Any], None]] = None, download_thumbnail=True):
     """
     下載YouTube視頻的音頻並將元數據儲存到資料庫
     
@@ -40,10 +40,20 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
         url: YouTube URL
         output_folder: 輸出文件夾
         progress_callback: 進度回調函數，接收 DownloadProgress 對象
+        download_thumbnail: 是否同時下載縮圖
     """
     # 確保輸出目錄存在
-    output_path = Path(output_folder)
+    if output_folder.startswith("downloads"):
+        # 如果是相對路徑，使用項目根目錄
+        output_path = Path(current_dir) / output_folder
+    else:
+        output_path = Path(output_folder)
+    
     output_path.mkdir(parents=True, exist_ok=True)
+    
+    # 縮圖目錄
+    thumbnail_dir = Path(current_dir) / "downloads" / "thumbnails"
+    thumbnail_dir.mkdir(parents=True, exist_ok=True)
     
     # 格式化輸出文件名
     output_template = str(output_path / "%(title)s.%(ext)s")
@@ -132,6 +142,7 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
                 uploader = entry.get('uploader', '未知頻道')
                 duration = entry.get('duration', 0)
                 video_id = entry.get('id', '')
+                thumbnail_url = entry.get('thumbnail', '')
                 # 獲取單一視頻URL
                 video_url = entry.get('webpage_url', url)
             else:
@@ -140,6 +151,7 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
                 uploader = info.get('uploader', '未知頻道')
                 duration = info.get('duration', 0)
                 video_id = info.get('id', '')
+                thumbnail_url = info.get('thumbnail', '')
                 video_url = url
             
             minutes = duration // 60
@@ -147,6 +159,30 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
             print(f"視頻: {title}")
             print(f"頻道: {uploader}")
             print(f"時長: {minutes}:{seconds:02d}")
+            
+            # 下載縮圖
+            if download_thumbnail and video_id and thumbnail_url:
+                try:
+                    # 導入縮圖工具模組
+                    try:
+                        from src.utils.thumbnail_utils import download_thumbnail as dl_thumbnail
+                        thumbnail_path = dl_thumbnail(video_id, thumbnail_url, thumbnail_dir)
+                        if thumbnail_path:
+                            print(f"縮圖下載成功: {thumbnail_path}")
+                    except ImportError:
+                        # 如果找不到模組，直接使用requests下載
+                        import requests
+                        thumbnail_path = thumbnail_dir / f"{video_id}.jpg"
+                        if not thumbnail_path.exists():
+                            response = requests.get(thumbnail_url, stream=True, timeout=10)
+                            response.raise_for_status()
+                            with open(thumbnail_path, 'wb') as f:
+                                for chunk in response.iter_content(chunk_size=1024):
+                                    if chunk:
+                                        f.write(chunk)
+                            print(f"縮圖下載成功: {thumbnail_path}")
+                except Exception as e:
+                    print(f"下載縮圖失敗: {e}")
             
             print("\n開始下載音樂...")
             # 下載視頻
@@ -158,6 +194,15 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
                 # 添加到資料庫
                 if db_manager is not None:
                     file_size = output_file.stat().st_size / (1024 * 1024)  # 轉換為MB
+                    
+                    # 檢查是否有縮圖
+                    thumbnail_path = ""
+                    if video_id:
+                        # 嘗試找到縮圖
+                        possible_thumbnail = thumbnail_dir / f"{video_id}.jpg"
+                        if possible_thumbnail.exists():
+                            thumbnail_path = str(possible_thumbnail)
+                    
                     db_manager.add_media_file(
                         title=title,
                         file_path=str(output_file),
@@ -165,7 +210,8 @@ def download_audio(url, output_folder="downloads/audio", progress_callback: Opti
                         file_size=file_size,
                         duration=duration,
                         uploader=uploader,
-                        youtube_id=video_id
+                        youtube_id=video_id,
+                        thumbnail_path=thumbnail_path
                     )
                     print(f"已將檔案 {title} 添加到資料庫")
     
