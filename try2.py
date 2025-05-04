@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 import yt_dlp
+from typing import Optional, Callable, Any
 
 # 確保src目錄在路徑中以便導入資料庫模組
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -15,17 +16,30 @@ if current_dir not in sys.path:
 
 try:
     from src.database import db_manager, MediaType
+    from src.youtube_fetcher import DownloadProgress
 except ImportError:
     print("無法導入資料庫模組，請確保src/database目錄存在")
     db_manager = None
+    
+    # 如果 DownloadProgress 無法導入，創建一個本地版本
+    class DownloadProgress:
+        def __init__(self, status: str, percent: float, downloaded_bytes: int, total_bytes: int, speed: float, eta: int, filename: str = ""):
+            self.status = status
+            self.percent = percent
+            self.downloaded_bytes = downloaded_bytes
+            self.total_bytes = total_bytes
+            self.speed = speed
+            self.eta = eta
+            self.filename = filename
 
-def download_audio(url, output_folder="downloads/audio"):
+def download_audio(url, output_folder="downloads/audio", progress_callback: Optional[Callable[[Any], None]] = None):
     """
     下載YouTube視頻的音頻並將元數據儲存到資料庫
     
     Args:
         url: YouTube URL
         output_folder: 輸出文件夾
+        progress_callback: 進度回調函數，接收 DownloadProgress 對象
     """
     # 確保輸出目錄存在
     output_path = Path(output_folder)
@@ -33,6 +47,54 @@ def download_audio(url, output_folder="downloads/audio"):
     
     # 格式化輸出文件名
     output_template = str(output_path / "%(title)s.%(ext)s")
+    
+    # 創建一個自定義的進度回調函數
+    def custom_progress_hook(d):
+        """下載進度回調函數"""
+        if d['status'] == 'downloading':
+            # 計算下載進度
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
+            percent = (downloaded / total * 100) if total else 0
+            
+            # 計算下載速度和剩餘時間
+            speed = d.get('speed', 0) or 0
+            eta = d.get('eta', 0) or 0
+            filename = d.get('filename', '')
+            
+            # 顯示下載進度在終端
+            print(f"\r下載進度: {percent:.1f}% - "
+                  f"{downloaded / 1024 / 1024:.1f}MB / {total / 1024 / 1024:.1f}MB - "
+                  f"速度: {speed / 1024 / 1024:.1f}MB/s - "
+                  f"剩餘時間: {eta}秒", end="")
+            
+            # 如果提供了進度回調函數，也通過它傳遞進度信息
+            if progress_callback:
+                progress_data = DownloadProgress(
+                    status='downloading',
+                    percent=percent,
+                    downloaded_bytes=downloaded,
+                    total_bytes=total,
+                    speed=speed,
+                    eta=eta,
+                    filename=filename
+                )
+                progress_callback(progress_data)
+        
+        elif d['status'] == 'finished':
+            print("\n下載完成，正在轉換格式...")
+            # 通知下載完成
+            if progress_callback:
+                progress_data = DownloadProgress(
+                    status='finished',
+                    percent=100.0,
+                    downloaded_bytes=0,
+                    total_bytes=0,
+                    speed=0,
+                    eta=0,
+                    filename=d.get('filename', '')
+                )
+                progress_callback(progress_data)
     
     # 下載選項
     ydl_opts = {
@@ -44,7 +106,7 @@ def download_audio(url, output_folder="downloads/audio"):
         }],
         'outtmpl': output_template,
         'noplaylist': True,  # 預設不下載播放清單，只取單一影片
-        'progress_hooks': [progress_hook],
+        'progress_hooks': [custom_progress_hook],
     }
     
     try:
@@ -109,9 +171,23 @@ def download_audio(url, output_folder="downloads/audio"):
     
     except Exception as e:
         print(f"下載過程中發生錯誤: {e}")
+        # 通知下載失敗
+        if progress_callback:
+            progress_data = DownloadProgress(
+                status='error',
+                percent=0.0,
+                downloaded_bytes=0,
+                total_bytes=0,
+                speed=0,
+                eta=0,
+                filename=""
+            )
+            progress_callback(progress_data)
+        # 重新拋出異常以便上層處理
+        raise
 
 def progress_hook(d):
-    """下載進度回調函數"""
+    """下載進度回調函數（舊版本，保留向後兼容）"""
     if d['status'] == 'downloading':
         # 計算下載進度
         downloaded = d.get('downloaded_bytes', 0)

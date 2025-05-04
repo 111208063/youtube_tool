@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 import threading
+from datetime import datetime
 
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QObject, QMetaObject, Q_ARG, QTimer
 from PyQt6.QtGui import QIcon, QPixmap
@@ -388,13 +389,82 @@ class DownloadWidget(QWidget):
         
         # 使用try2.py的功能下載音訊（僅適用於單個影片）
         if is_audio and try2 is not None and not download_playlist:
-            # 對於單一音訊下載，繼續使用try2.py
-            threading.Thread(
-                target=try2.download_audio,
-                args=(url,),
-                daemon=True
-            ).start()
-            QMessageBox.information(self, "開始下載", "下載已開始，檔案將存放到downloads/audio目錄並記錄在資料庫中")
+            # 對於單一音訊下載，使用修改後的try2.py，但仍使用進度條顯示
+            try:
+                # 從分析結果中獲取視頻信息
+                video_info = None
+                if hasattr(self, 'current_video_info') and self.current_video_info:
+                    video_info = self.current_video_info
+                else:
+                    # 若沒有分析結果，先用一個臨時標題
+                    video_info = {"title": "正在下載中...", "thumbnail_url": ""}
+                
+                # 創建一個臨時任務ID
+                import uuid
+                task_id = str(uuid.uuid4())
+                
+                # 創建一個臨時任務對象
+                from src.gui.download_manager import DownloadTask, DownloadStatus
+                temp_task = DownloadTask(
+                    id=task_id,
+                    url=url,
+                    title=video_info.get("title", "YouTube 下載"),
+                    thumbnail_url=video_info.get("thumbnail_url", ""),
+                    status=DownloadStatus.DOWNLOADING,
+                    media_type=MediaType.AUDIO,
+                    quality=quality,
+                    progress=0.0
+                )
+                
+                # 添加到UI顯示
+                QMetaObject.invokeMethod(
+                    self, 
+                    "_update_download_ui",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(str, task_id),
+                    Q_ARG(object, temp_task)
+                )
+                
+                # 創建進度回調函數
+                def progress_callback(progress):
+                    # 更新任務進度
+                    temp_task.progress = progress.percent
+                    
+                    # 根據下載狀態更新任務
+                    if progress.status == 'finished':
+                        temp_task.status = DownloadStatus.COMPLETED
+                        temp_task.completed_at = datetime.now()
+                        temp_task.file_path = progress.filename  # 設置文件路徑
+                        
+                        # 發出下載完成信號
+                        QTimer.singleShot(500, self.download_completed.emit)
+                    elif progress.status == 'error':
+                        temp_task.status = DownloadStatus.FAILED
+                        temp_task.error_message = "下載過程中出錯"
+                    
+                    # 通知UI更新
+                    QMetaObject.invokeMethod(
+                        self, 
+                        "_update_download_ui",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(str, task_id),
+                        Q_ARG(object, temp_task)
+                    )
+                
+                # 啟動下載線程，傳入進度回調
+                # 使用與 DownloadManager 相同的下載路徑，確保一致性
+                audio_dir = str(self.download_manager.download_path / "audio")
+                threading.Thread(
+                    target=try2.download_audio,
+                    args=(url, audio_dir, progress_callback),
+                    daemon=True
+                ).start()
+                
+                # 提示消息
+                QMessageBox.information(self, "開始下載", "下載已開始，可在下方查看進度。檔案將記錄在資料庫中")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "下載失敗", f"無法開始下載：{str(e)}")
         else:
             # 使用DownloadManager進行下載
             try:
