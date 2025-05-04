@@ -44,6 +44,14 @@ def add_media_file(title: str, file_path: str, media_type, file_size: float, dur
             cursor.execute("SELECT id FROM media_files WHERE file_path = ?", (file_path,))
             existing = cursor.fetchone()
             
+            # 處理不同來源的 MediaType
+            # 獲取媒體類型的值（字符串）
+            media_type_str = media_type.value if hasattr(media_type, 'value') else str(media_type)
+            
+            # 將字符串轉換為資料庫使用的 MediaType
+            from src.database.models import MediaType as DBMediaType
+            db_media_type = DBMediaType.AUDIO if media_type_str.lower() == 'audio' else DBMediaType.VIDEO
+            
             if existing:
                 # 檔案已存在，更新記錄
                 cursor.execute(
@@ -56,7 +64,7 @@ def add_media_file(title: str, file_path: str, media_type, file_size: float, dur
                             youtube_id = ?,
                             thumbnail_path = ?
                         WHERE file_path = ?""",
-                    (title, media_type.value, file_size, duration, uploader, youtube_id, thumbnail_path, file_path)
+                    (title, db_media_type.value, file_size, duration, uploader, youtube_id, thumbnail_path, file_path)
                 )
             else:
                 # 添加新記錄
@@ -64,7 +72,7 @@ def add_media_file(title: str, file_path: str, media_type, file_size: float, dur
                     """INSERT INTO media_files 
                         (title, file_path, media_type, file_size, duration, date_added, uploader, youtube_id, thumbnail_path) 
                     VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
-                    (title, file_path, media_type.value, file_size, duration, uploader, youtube_id, thumbnail_path)
+                    (title, file_path, db_media_type.value, file_size, duration, uploader, youtube_id, thumbnail_path)
                 )
             
             conn.commit()

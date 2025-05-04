@@ -1,9 +1,8 @@
 """
-測試 try2.py 的 download_audio 函數進度回調功能
+測試統一下載模組的功能
 """
-import try2
+from src.unified_downloader import YouTubeDownloader, MediaType, AudioQuality, VideoQuality, DownloadProgress
 import time
-from src.youtube_fetcher import DownloadProgress
 
 def progress_callback(progress: DownloadProgress):
     """處理下載進度更新"""
@@ -15,17 +14,33 @@ def progress_callback(progress: DownloadProgress):
         print("\n下載失敗")
 
 if __name__ == "__main__":
-    print("=== 測試單一影片下載與進度條 ===")
+    print("=== 測試統一下載模組 ===")
     
     # 使用短影片測試（請替換為合適的 YouTube URL）
-    # 這是一個短影片示例 URL，通常用於測試
     url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"  # "Me at the zoo" - 第一個 YouTube 影片
     
     print(f"開始下載影片: {url}")
     print("進度將顯示在下面:")
     
     try:
-        try2.download_audio(url, "downloads/audio", progress_callback)
+        # 創建下載器
+        downloader = YouTubeDownloader("downloads/audio")
+        
+        # 從 url 取得視頻資訊
+        info = downloader.extract_info(url)
+        print(f"提取到視頻：{info.title} (by {info.channel})")
+        
+        # 下載音頻
+        result = downloader.download(
+            url=url,
+            media_type=MediaType.AUDIO,
+            quality=AudioQuality.HIGH,
+            download_playlist=False,
+            progress_callback=progress_callback,
+            download_thumbnail=True
+        )
+        
+        print(f"\n文件已下載到: {result}")
     except Exception as e:
         print(f"\n下載過程中發生錯誤: {e}")
     

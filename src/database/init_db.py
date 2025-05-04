@@ -28,9 +28,16 @@ if str(src_dir) not in sys.path:
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
-# 導入數據庫模型
-from src.database import db_manager, MediaType
+# 導入數據庫模型和管理器
+from src.database import db_manager
+from src.database.models import MediaType as DBMediaType
 
+# 避免與 unified_downloader 中的 MediaType 衝突
+DownloaderMediaType = None
+try:
+    from src.unified_downloader import MediaType as DownloaderMediaType
+except ImportError:
+    pass
 
 def scan_directory(directory: str) -> list:
     """掃描目錄尋找媒體檔案
@@ -94,7 +101,7 @@ def add_file_to_database(file_path: str) -> int:
         
         # 確定媒體類型
         is_audio = file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac'))
-        media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
+        media_type = DBMediaType.AUDIO if is_audio else DBMediaType.VIDEO
         
         # 尋找相關縮圖
         thumbnail_path = ""
@@ -134,16 +141,9 @@ def main():
     
     # 目錄列表
     directories = [
-        # 新版統一存儲位置
+        # 只保留統一存儲位置
         os.path.join(root_dir, "downloads", "audio"),
-        os.path.join(root_dir, "downloads", "video"),
-        
-        # 舊版存儲位置
-        os.path.join(root_dir, "music"),
-        
-        # 備份下載目錄（如果有需要）
-        os.path.join(Path.home(), "Downloads", "YouTube", "audio"),
-        os.path.join(Path.home(), "Downloads", "YouTube", "video")
+        os.path.join(root_dir, "downloads", "video")
     ]
     
     # 掃描所有目錄並添加檔案

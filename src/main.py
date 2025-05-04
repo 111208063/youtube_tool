@@ -41,21 +41,11 @@ def initialize_database():
     if removed_duplicates > 0 or removed_nonexistent > 0:
         logging.info(f"資料庫清理完成：移除了 {removed_duplicates} 個重複記錄和 {removed_nonexistent} 個不存在檔案的記錄")
     
-    # 主要目錄列表 - 優先掃描這些目錄
-    primary_directories = [
+    # 目錄列表 - 只包含標準下載目錄
+    directories = [
         # 標準下載目錄
         str(parent_dir / "downloads" / "audio"),
         str(parent_dir / "downloads" / "video"),
-    ]
-    
-    # 次要目錄列表 - 如果存在則掃描
-    secondary_directories = [
-        # 舊版存儲位置
-        str(parent_dir / "music"),
-        
-        # 用戶下載目錄
-        str(Path.home() / "Downloads" / "YouTube" / "audio"),
-        str(Path.home() / "Downloads" / "YouTube" / "video")
     ]
     
     # 確保縮圖目錄存在
@@ -66,8 +56,8 @@ def initialize_database():
     os.environ["THUMBNAIL_DIR"] = str(thumbnail_dir)
     logging.info(f"設置縮圖目錄: {thumbnail_dir}")
     
-    # 確保主要目錄存在
-    for directory in primary_directories:
+    # 確保目錄存在
+    for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
     
     # 掃描所有目錄並添加檔案
@@ -75,9 +65,9 @@ def initialize_database():
     added_files = 0
     updated_files = 0
     
-    # 先掃描主要目錄
-    for directory in primary_directories:
-        logging.info(f"掃描主要目錄: {directory}")
+    # 掃描目錄
+    for directory in directories:
+        logging.info(f"掃描目錄: {directory}")
         media_files = scan_directory(directory)
         total_files += len(media_files)
         
@@ -87,20 +77,6 @@ def initialize_database():
                 added_files += 1
             elif result == 2:  # 更新檔案
                 updated_files += 1
-    
-    # 再掃描次要目錄
-    for directory in secondary_directories:
-        if Path(directory).exists():
-            logging.info(f"掃描次要目錄: {directory}")
-            media_files = scan_directory(directory)
-            total_files += len(media_files)
-            
-            for file_path in media_files:
-                result = add_file_to_database(file_path)
-                if result == 1:
-                    added_files += 1
-                elif result == 2:
-                    updated_files += 1
     
     logging.info(f"資料庫初始化完成")
     logging.info(f"總共掃描: {total_files} 個檔案")

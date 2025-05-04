@@ -20,6 +20,15 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from src.database import db_manager, MediaType
 from src.gui.media_player import MediaPlayerWindow
 
+# 導入數據庫模型和管理器
+from src.database.models import MediaType as DBMediaType
+
+# 避免與 unified_downloader 中的 MediaType 衝突
+try:
+    from src.unified_downloader import MediaType as DownloaderMediaType
+except ImportError:
+    DownloaderMediaType = None
+
 
 class MediaItem(QWidget):
     """媒體項目元件，用於在媒體庫中顯示單一媒體項目"""
@@ -962,7 +971,7 @@ class MediaLibrary(QWidget):
                     
                     # 添加到資料庫
                     file_size = os.path.getsize(target_path) / (1024 * 1024)  # 轉換為MB
-                    media_type = MediaType.AUDIO if is_audio else MediaType.VIDEO
+                    media_type = DBMediaType.AUDIO if is_audio else DBMediaType.VIDEO
                     
                     db_manager.add_media_file(
                         title=os.path.basename(target_path),
