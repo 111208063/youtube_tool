@@ -110,19 +110,19 @@ pip install -r requirements.txt
 ## 螢幕截圖
 
 ### 主界面
-![主界面](docs/images/main_interface.png)
+![主界面](docs/mainpage.png)
 *下載頁面主界面*
 
 ### 分析影片
-![分析影片](docs/images/video_analysis.png)
+![分析影片](docs/analyze.png)
 *影片分析結果顯示*
 
 ### 下載進度
-![下載進度](docs/images/download_progress.png)
+![下載進度](docs/dlpage.png)
 *顯示下載進度與操作選項*
 
 ### 媒體庫
-![媒體庫](docs/images/media_library.png)
+![媒體庫](docs/mediapage.png)
 *媒體庫界面，顯示已下載內容*
 
 ## 打包指南
