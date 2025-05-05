@@ -14,6 +14,64 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# 檢測並設定 FFmpeg 路徑
+def setup_ffmpeg():
+    """檢測並設定 FFmpeg 路徑"""
+    # 檢查是否有內建的 FFmpeg
+    current_dir = Path(__file__).parent
+    parent_dir = current_dir.parent
+    bundled_ffmpeg = None
+    
+    # 檢查打包後的路徑
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent
+        potential_paths = [
+            base_dir / "ffmpeg" / "ffmpeg.exe",  # Windows
+            base_dir / "ffmpeg" / "ffmpeg",      # Unix
+            base_dir.parent / "ffmpeg" / "ffmpeg.exe",  # Windows 替代路徑
+            base_dir.parent / "ffmpeg" / "ffmpeg",      # Unix 替代路徑
+        ]
+        
+        for path in potential_paths:
+            if path.exists():
+                bundled_ffmpeg = str(path)
+                logging.info(f"找到內建 FFmpeg: {bundled_ffmpeg}")
+                break
+    
+    # 檢查開發環境路徑
+    if not bundled_ffmpeg:
+        potential_paths = [
+            parent_dir / "ffmpeg" / "ffmpeg.exe",  # Windows
+            parent_dir / "ffmpeg" / "ffmpeg",      # Unix
+        ]
+        
+        for path in potential_paths:
+            if path.exists():
+                bundled_ffmpeg = str(path)
+                logging.info(f"找到開發環境 FFmpeg: {bundled_ffmpeg}")
+                break
+    
+    # 如果找到內建的 FFmpeg，則將其添加到 PATH
+    if bundled_ffmpeg:
+        ffmpeg_dir = str(Path(bundled_ffmpeg).parent)
+        
+        # 添加到環境變數 PATH
+        if ffmpeg_dir not in os.environ["PATH"]:
+            os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
+            logging.info(f"已將 FFmpeg 目錄添加到 PATH: {ffmpeg_dir}")
+        
+        return True
+    else:
+        # 嘗試檢測系統 FFmpeg
+        try:
+            import subprocess
+            subprocess.run(["ffmpeg", "-version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logging.info("使用系統 FFmpeg")
+            return True
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logging.warning("未找到 FFmpeg，某些功能可能不可用")
+            return False
+
 # 將src目錄添加到Python路徑
 current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
@@ -24,7 +82,7 @@ if parent_dir not in sys.path:
 if parent_dir / "try2.py" not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
 
 from src.gui.main_window import MainWindow
@@ -86,6 +144,9 @@ def initialize_database():
 
 def main():
     """主程序入口點"""
+    # 檢測並設定 FFmpeg
+    ffmpeg_available = setup_ffmpeg()
+    
     # 初始化資料庫
     initialize_database()
     
@@ -170,6 +231,15 @@ def main():
             background-color: #4f46e5;
         }
     """)
+    
+    # 如果未找到 FFmpeg，顯示警告
+    if not ffmpeg_available:
+        QMessageBox.warning(
+            None, 
+            "FFmpeg 未找到", 
+            "未能找到 FFmpeg，部分影片和音訊處理功能可能無法正常工作。\n\n"
+            "請安裝 FFmpeg 並確保其可以在命令行中執行。"
+        )
     
     # 創建並顯示主視窗
     window = MainWindow()

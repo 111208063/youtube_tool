@@ -102,3 +102,28 @@ def update_media_file_size(file_path: str, new_size: float) -> bool:
     except Exception as e:
         logging.error(f"更新媒體檔案大小時出錯: {e}")
         return False 
+
+# 添加一個查詢函數來打印所有媒體文件及其 YouTube ID
+def print_all_media_files_with_youtube_id():
+    """打印所有媒體文件及其 YouTube ID
+    
+    用於調試目的，顯示資料庫中所有媒體記錄的路徑和YouTube ID
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, title, file_path, youtube_id, thumbnail_path FROM media_files")
+            rows = cursor.fetchall()
+            
+            print(f"資料庫中共有 {len(rows)} 項媒體記錄:")
+            for row in rows:
+                print(f"ID: {row[0]}, 標題: {row[1]}")
+                print(f"  路徑: {row[2]}")
+                print(f"  YouTube ID: {row[3] if row[3] else '無'}")
+                print(f"  縮圖路徑: {row[4] if row[4] else '無'}")
+                print("---")
+            
+            return rows
+    except Exception as e:
+        logging.error(f"查詢媒體文件時出錯: {e}")
+        return [] 

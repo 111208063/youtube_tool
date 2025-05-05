@@ -19,24 +19,27 @@
 ## 系統需求
 
 - **作業系統**：Windows 10/11, macOS 10.14+, 或 Linux
-- **Python**：Python 3.8 或更高版本
+- **Python**：Python 3.8 或更高版本 (建議使用 Python 3.10+)
 - **記憶體**：至少 4GB RAM
 - **空間**：至少 500MB 可用硬碟空間（不含下載的媒體檔案）
 - **網路**：穩定的網路連接
-- **其他**：FFmpeg（用於媒體轉換）
+- **其他**：FFmpeg（用於媒體轉換，注意：打包版本已內建，無需另外安裝）
 
 ## 技術堆疊
 
-- Python 3.8+
+- Python 3.10+
 - PyQt6 (GUI 框架)
 - yt-dlp (YouTube 下載庫)
+- pytube (YouTube 擷取功能)
 - SQLAlchemy (資料庫 ORM)
 - FFmpeg (媒體處理)
 - SQLite (本地資料庫)
 
 ## 安裝步驟
 
-1. 確保已安裝 Python 3.8 或更高版本
+### 方法一：從源碼運行
+
+1. 確保已安裝 Python 3.8+ (建議 Python 3.10+)
 2. 克隆或下載此專案：
    ```bash
    git clone https://github.com/your-username/youtube-downloader.git
@@ -52,6 +55,38 @@
    - Windows: 可以從[官方網站](https://ffmpeg.org/download.html)下載並添加到系統路徑
    - MacOS: 使用 Homebrew 安裝 `brew install ffmpeg`
    - Linux: 使用套件管理器安裝，例如 `sudo apt install ffmpeg`
+
+### 方法二：使用虛擬環境（推薦）
+
+```bash
+# 創建虛擬環境
+python -m venv .venv
+
+# 啟動虛擬環境
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
+# 安裝依賴
+pip install -r requirements.txt
+```
+
+### 方法三：使用獨立可執行檔（推薦）
+
+1. 從 [Releases](https://github.com/your-username/youtube-downloader/releases) 頁面下載最新的打包版本：
+   - Windows: 下載 `YouTube下載工具_Windows.zip`
+   - macOS: 下載 `YouTube下載工具_macOS.zip`
+   - Linux: 下載 `YouTube下載工具_Linux.tar.gz`
+
+2. 解壓縮下載的檔案到任意位置
+
+3. 直接運行可執行檔：
+   - Windows: 雙擊 `YouTube下載工具.exe`
+   - macOS: 雙擊 `YouTube下載工具`
+   - Linux: 執行 `./YouTube下載工具`
+
+4. 無需安裝 Python 或 FFmpeg，所有必要的依賴都已包含在內
 
 ## 使用方法
 
@@ -73,8 +108,8 @@
    - 直接從媒體庫播放或開啟文件所在資料夾
 
 4. 下載完成後，可在程式的媒體庫中找到文件，或預設保存位置為：
-   - `~/Downloads/YouTube/audio` (音訊文件)
-   - `~/Downloads/YouTube/video` (視訊文件)
+   - `downloads/audio` (音訊文件)
+   - `downloads/video` (視訊文件)
 
 ## 螢幕截圖
 
@@ -94,6 +129,39 @@
 ![媒體庫](docs/images/media_library.png)
 *媒體庫界面，顯示已下載內容*
 
+## 打包指南
+
+### 使用 PyInstaller 創建可執行檔
+
+1. 安裝 PyInstaller：
+   ```bash
+   pip install pyinstaller
+   ```
+
+2. 執行打包命令：
+   ```bash
+   # Windows
+   pyinstaller --onefile --windowed --icon=assets/icon.ico --name="YouTube下載工具" src/main.py
+   
+   # macOS
+   pyinstaller --onefile --windowed --icon=assets/icon.icns --name="YouTube下載工具" src/main.py
+   
+   # Linux
+   pyinstaller --onefile --windowed --icon=assets/icon.png --name="YouTube下載工具" src/main.py
+   ```
+
+3. 打包後的檔案位於 `dist` 目錄中
+
+### 或使用提供的打包腳本
+
+```bash
+# Windows
+scripts/build_windows.bat
+
+# macOS/Linux
+bash scripts/build_unix.sh
+```
+
 ## 注意事項
 
 - 本工具僅供個人學習和研究使用
@@ -112,12 +180,15 @@ youtube-downloader/
 │   ├── utils/            # 工具函數
 │   ├── core/             # 核心功能模組
 │   ├── main.py           # 程式入口點
-│   └── youtube_fetcher.py # YouTube 影片擷取器
+│   └── unified_downloader.py # YouTube 影片下載器
 ├── downloads/            # 下載文件存儲目錄
 │   ├── audio/            # 音訊文件
-│   └── video/            # 視訊文件
+│   ├── video/            # 視訊文件
+│   └── thumbnails/       # 縮圖存儲目錄
 ├── tests/                # 測試代碼
 ├── docs/                 # 文檔
+├── assets/               # 圖標和資源文件
+├── scripts/              # 打包和工具腳本
 ├── requirements.txt      # 依賴套件列表
 └── README.md             # 專案說明
 ```
@@ -133,8 +204,13 @@ youtube-downloader/
    - 檢查 URL 是否正確，或嘗試使用其他版本的影片 URL
 
 3. **找不到下載的文件？**
-   - 檢查預設下載路徑：`~/Downloads/YouTube/`
+   - 檢查預設下載路徑：`downloads/audio` 和 `downloads/video`
    - 使用媒體庫功能查看您的下載歷史
+
+4. **打包後的應用程式無法運行？**
+   - 檢查是否有防毒軟件阻止執行
+   - 嘗試使用管理員權限運行
+   - 對於打包版本，無需額外安裝 FFmpeg，它已經內建
 
 ## 未來計劃功能
 
@@ -159,8 +235,6 @@ youtube-downloader/
 
 ## 開發指南
 
-如果您想參與開發或自訂這個工具，以下是一些有用的資訊：
-
 ### 環境設置
 
 建議使用虛擬環境進行開發：
@@ -176,7 +250,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # 安裝開發依賴
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ### 項目結構說明
@@ -190,25 +264,19 @@ pip install -r requirements.txt
   - `db_manager.py`: 資料庫操作封裝
   - `init_db.py`: 資料庫初始化工具
   
-- `src/youtube_fetcher.py`: 核心下載功能實現
-
-### 擴展功能
-
-想要添加新功能？以下是一些建議的切入點：
-
-1. **添加新的下載格式**: 修改 `youtube_fetcher.py` 中的下載選項
-2. **支援新的網站**: 考慮擴展 `youtube_fetcher.py` 或建立新的抓取模組
-3. **改進 UI**: 修改 `gui/` 目錄下的相關文件
-4. **添加播放功能**: 考慮使用 PyQt 的多媒體模組建立播放器界面
+- `src/unified_downloader.py`: 核心下載功能實現
 
 ### 測試
 
 在提交之前，請確保進行適當的測試：
 
-1. 測試各種類型的 YouTube URL
-2. 測試不同質量選項的下載
-3. 測試暫停/繼續下載功能
-4. 測試媒體庫功能
+```bash
+# 運行所有測試
+pytest
+
+# 運行特定測試
+pytest tests/test_downloader.py
+```
 
 ## 授權
 

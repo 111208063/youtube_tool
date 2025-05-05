@@ -87,13 +87,149 @@ class MediaItem(QWidget):
         self.thumbnail = QLabel()
         self.thumbnail.setFixedSize(60, 60)
         self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumbnail.setStyleSheet("background-color: #1e1e1e; border-radius: 4px;")
+        self.thumbnail.setStyleSheet("background-color: #1e1e1e; border-radius: 4px; padding: 2px;")
+        self.thumbnail.setScaledContents(True)  # 設置為縮放內容以填滿 Label
+        
+        print(f"初始化媒體項目: {os.path.basename(self.file_path)}")
+        print(f"  縮圖路徑: {self.thumbnail_path}")
         
         # 如果有縮圖，載入縮圖
+        thumbnail_found = False
         if self.thumbnail_path and os.path.exists(self.thumbnail_path):
-            pixmap = QPixmap(self.thumbnail_path)
-            self.thumbnail.setPixmap(pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio))
+            print(f"  正在載入縮圖: {self.thumbnail_path}")
+            try:
+                pixmap = QPixmap(self.thumbnail_path)
+                if not pixmap.isNull():
+                    # 處理縮圖縮放
+                    pixmap = pixmap.scaled(
+                        56, 56,  # 略小以適應邊框
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation  # 使用平滑變換提高質量
+                    )
+                    self.thumbnail.setPixmap(pixmap)
+                    thumbnail_found = True
+                    print(f"  縮圖載入成功: {pixmap.width()}x{pixmap.height()}")
+                else:
+                    print(f"  縮圖載入失敗: QPixmap 為空")
+            except Exception as e:
+                print(f"  載入縮圖出錯: {e}")
         else:
+            print(f"  無縮圖路徑或縮圖不存在")
+            # 嘗試從檔名提取 YouTube ID 並尋找縮圖
+            try:
+                import re
+                filename = os.path.basename(self.file_path)
+                match = re.search(r'([-\w]{11})', filename)
+                if match:
+                    youtube_id = match.group(1)
+                    print(f"  從檔名提取到 YouTube ID: {youtube_id}")
+                    
+                    # 檢查縮圖目錄中是否有對應的縮圖
+                    current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+                    root_dir = current_dir.parent.parent
+                    thumbnail_file = root_dir / "downloads" / "thumbnails" / f"{youtube_id}.jpg"
+                    
+                    print(f"  尋找縮圖: {thumbnail_file}")
+                    if thumbnail_file.exists():
+                        print(f"  縮圖存在: {thumbnail_file}")
+                        try:
+                            pixmap = QPixmap(str(thumbnail_file))
+                            if not pixmap.isNull():
+                                # 處理縮圖縮放
+                                pixmap = pixmap.scaled(
+                                    56, 56,  # 略小以適應邊框
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation  # 使用平滑變換提高質量
+                                )
+                                self.thumbnail.setPixmap(pixmap)
+                                thumbnail_found = True
+                                print(f"  縮圖載入成功: {pixmap.width()}x{pixmap.height()}")
+                            else:
+                                print(f"  縮圖載入失敗: QPixmap 為空")
+                        except Exception as e:
+                            print(f"  載入縮圖出錯: {e}")
+                        
+                        # 更新資料庫中的縮圖路徑（如果尚未設置）
+                        try:
+                            from src.database import db_manager
+                            media_file = db_manager.get_media_file_by_path(self.file_path)
+                            if media_file and (not hasattr(media_file, 'thumbnail_path') or not media_file.thumbnail_path):
+                                db_manager.add_media_file(
+                                    title=media_file.title,
+                                    file_path=self.file_path,
+                                    media_type=media_file.media_type,
+                                    file_size=media_file.file_size,
+                                    duration=media_file.duration if hasattr(media_file, 'duration') else 0,
+                                    uploader=media_file.uploader if hasattr(media_file, 'uploader') else "",
+                                    youtube_id=youtube_id,
+                                    thumbnail_path=str(thumbnail_file)
+                                )
+                                print(f"  已更新資料庫中的縮圖路徑")
+                        except Exception as e:
+                            print(f"  更新縮圖路徑時出錯: {e}")
+                    else:
+                        print(f"  縮圖不存在: {thumbnail_file}")
+                else:
+                    print(f"  無法從檔名提取 YouTube ID")
+            except Exception as e:
+                print(f"  嘗試尋找縮圖時出錯: {e}")
+        
+        # 如果已從數據庫獲取到 YouTube ID，但上面沒找到縮圖，再嘗試一次
+        if not thumbnail_found:
+            try:
+                # 從資料庫獲取檔案信息
+                from src.database import db_manager
+                media_file = db_manager.get_media_file_by_path(self.file_path)
+                
+                if media_file and hasattr(media_file, 'youtube_id') and media_file.youtube_id:
+                    youtube_id = media_file.youtube_id
+                    print(f"  從資料庫獲取到 YouTube ID: {youtube_id}")
+                    
+                    # 再次檢查縮圖
+                    current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+                    root_dir = current_dir.parent.parent
+                    thumbnail_file = root_dir / "downloads" / "thumbnails" / f"{youtube_id}.jpg"
+                    
+                    print(f"  再次尋找縮圖: {thumbnail_file}")
+                    if thumbnail_file.exists():
+                        try:
+                            pixmap = QPixmap(str(thumbnail_file))
+                            if not pixmap.isNull():
+                                # 處理縮圖縮放
+                                pixmap = pixmap.scaled(
+                                    56, 56,  # 略小以適應邊框
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation  # 使用平滑變換提高質量
+                                )
+                                self.thumbnail.setPixmap(pixmap)
+                                thumbnail_found = True
+                                print(f"  縮圖載入成功: {pixmap.width()}x{pixmap.height()}")
+                                
+                                # 更新資料庫中的縮圖路徑（如果不匹配）
+                                if not hasattr(media_file, 'thumbnail_path') or media_file.thumbnail_path != str(thumbnail_file):
+                                    db_manager.add_media_file(
+                                        title=media_file.title,
+                                        file_path=self.file_path,
+                                        media_type=media_file.media_type,
+                                        file_size=media_file.file_size,
+                                        duration=media_file.duration if hasattr(media_file, 'duration') else 0,
+                                        uploader=media_file.uploader if hasattr(media_file, 'uploader') else "",
+                                        youtube_id=youtube_id,
+                                        thumbnail_path=str(thumbnail_file)
+                                    )
+                                    print(f"  已更新資料庫中的縮圖路徑")
+                            else:
+                                print(f"  縮圖載入失敗: QPixmap 為空")
+                        except Exception as e:
+                            print(f"  載入縮圖出錯: {e}")
+                    else:
+                        print(f"  縮圖不存在: {thumbnail_file}")
+            except Exception as e:
+                print(f"  從資料庫獲取媒體信息時出錯: {e}")
+        
+        # 如果仍然沒有找到縮圖，顯示默認圖標
+        if not thumbnail_found:
+            print(f"  使用默認圖標")
             # 根據檔案類型顯示默認圖標
             if self.file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac')):
                 self.thumbnail.setText("🎵")
@@ -612,6 +748,10 @@ class MediaLibrary(QWidget):
         valid_files = []
         seen_filenames = set()
         
+        # 根目錄用於查找縮圖
+        root_dir = Path(self.download_dir).parent
+        thumbnails_dir = root_dir / "downloads" / "thumbnails"
+        
         for file_path in unique_files:
             if os.path.exists(file_path):
                 filename = os.path.basename(file_path)
@@ -619,7 +759,65 @@ class MediaLibrary(QWidget):
                     valid_files.append(file_path)
                     seen_filenames.add(filename)
                     
-                    # 檢查檔案是否存在於資料庫
+                    # 如果已經有縮圖路徑，繼續下一個檔案
+                    if file_path in thumbnail_paths:
+                        continue
+                    
+                    # 嘗試找到縮圖
+                    try:
+                        import re
+                        # 從檔名提取 YouTube ID
+                        match = re.search(r'([-\w]{11})', filename)
+                        if match:
+                            youtube_id = match.group(1)
+                            # 檢查縮圖目錄中是否有對應的縮圖
+                            thumbnail_file = thumbnails_dir / f"{youtube_id}.jpg"
+                            
+                            if thumbnail_file.exists():
+                                # 找到縮圖，記錄縮圖路徑
+                                thumbnail_paths[file_path] = str(thumbnail_file)
+                                
+                                # 檢查檔案是否存在於資料庫
+                                if file_path not in file_paths_from_db:
+                                    # 如果不在資料庫中，添加到資料庫並包含縮圖路徑
+                                    try:
+                                        # 獲取基本檔案信息
+                                        title = filename
+                                        file_size = os.path.getsize(file_path) / (1024 * 1024)  # 轉換為MB
+                                        is_audio = file_path.lower().endswith(('.mp3', '.wav', '.aac', '.ogg', '.flac'))
+                                        from src.database.models import MediaType as DBMediaType
+                                        media_type = DBMediaType.AUDIO if is_audio else DBMediaType.VIDEO
+                                        
+                                        # 添加到資料庫，包含縮圖路徑
+                                        db_manager.add_media_file(
+                                            title=title,
+                                            file_path=file_path,
+                                            media_type=media_type,
+                                            file_size=file_size,
+                                            youtube_id=youtube_id,
+                                            thumbnail_path=str(thumbnail_file)
+                                        )
+                                        print(f"已添加新檔案到資料庫(含縮圖): {file_path}")
+                                    except Exception as e:
+                                        print(f"添加檔案到資料庫失敗: {e}")
+                                else:
+                                    # 在資料庫中但沒有縮圖路徑，更新縮圖路徑
+                                    media_file = db_manager.get_media_file_by_path(file_path)
+                                    if media_file and (not hasattr(media_file, 'thumbnail_path') or not media_file.thumbnail_path):
+                                        db_manager.add_media_file(
+                                            title=media_file.title,
+                                            file_path=file_path,
+                                            media_type=media_file.media_type,
+                                            file_size=media_file.file_size,
+                                            duration=media_file.duration if hasattr(media_file, 'duration') else 0,
+                                            uploader=media_file.uploader if hasattr(media_file, 'uploader') else "",
+                                            youtube_id=youtube_id,
+                                            thumbnail_path=str(thumbnail_file)
+                                        )
+                    except Exception as e:
+                        print(f"尋找縮圖時出錯: {e}")
+                    
+                    # 檢查檔案是否存在於資料庫但無縮圖
                     if file_path not in file_paths_from_db:
                         # 如果不在資料庫中，添加到資料庫
                         try:
@@ -1021,16 +1219,57 @@ class MediaLibrary(QWidget):
             if hasattr(media_file, 'thumbnail_path') and media_file.thumbnail_path and os.path.exists(media_file.thumbnail_path):
                 thumbnail_paths[media_file.file_path] = media_file.thumbnail_path
         
-        # 更新顯示
+        # 確保檔案列表不含重複項目
         unique_file_paths = []
         seen_filenames = set()
         
-        # 確保檔案列表不含重複項目
+        # 根目錄用於查找縮圖
+        root_dir = Path(self.download_dir).parent
+        thumbnails_dir = root_dir / "downloads" / "thumbnails"
+        
+        # 遍歷過濾後的檔案
         for file_path in filtered_file_paths:
             filename = os.path.basename(file_path)
             if filename not in seen_filenames:
                 unique_file_paths.append(file_path)
                 seen_filenames.add(filename)
+                
+                # 如果已經有縮圖路徑，繼續下一個檔案
+                if file_path in thumbnail_paths:
+                    continue
+                
+                # 嘗試找到縮圖
+                try:
+                    import re
+                    # 從檔名提取 YouTube ID
+                    match = re.search(r'([-\w]{11})', filename)
+                    if match:
+                        youtube_id = match.group(1)
+                        # 檢查縮圖目錄中是否有對應的縮圖
+                        thumbnail_file = thumbnails_dir / f"{youtube_id}.jpg"
+                        
+                        if thumbnail_file.exists():
+                            # 找到縮圖，記錄縮圖路徑
+                            thumbnail_paths[file_path] = str(thumbnail_file)
+                            
+                            # 更新資料庫中的縮圖路徑（如果尚未設置）
+                            try:
+                                media_file = db_manager.get_media_file_by_path(file_path)
+                                if media_file and (not hasattr(media_file, 'thumbnail_path') or not media_file.thumbnail_path):
+                                    db_manager.add_media_file(
+                                        title=media_file.title,
+                                        file_path=file_path,
+                                        media_type=media_file.media_type,
+                                        file_size=media_file.file_size,
+                                        duration=media_file.duration if hasattr(media_file, 'duration') else 0,
+                                        uploader=media_file.uploader if hasattr(media_file, 'uploader') else "",
+                                        youtube_id=youtube_id,
+                                        thumbnail_path=str(thumbnail_file)
+                                    )
+                            except Exception as e:
+                                print(f"更新縮圖路徑時出錯: {e}")
+                except Exception as e:
+                    print(f"尋找縮圖時出錯: {e}")
         
         # 更新顯示
         self._display_media_items_with_thumbnails(unique_file_paths, thumbnail_paths)

@@ -5,10 +5,17 @@ pytube>=15.0.0
 
 # 資料處理與資料庫
 SQLAlchemy>=2.0.0
+alembic>=1.12.0
 
 # 媒體處理
 ffmpeg-python>=0.2.0
+moviepy>=1.0.3
 
 # 工具庫
 requests>=2.31.0
 python-dotenv>=1.0.0
+tqdm>=4.66.0
+pillow>=10.0.0
+
+# 打包工具 (開發專用)
+# pyinstaller>=6.0.0
