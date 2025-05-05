@@ -74,17 +74,14 @@ pip install -r requirements.txt
 
 ### 方法三：使用獨立可執行檔（推薦）
 
-1. 從 [Releases](https://github.com/your-username/youtube-downloader/releases) 頁面下載最新的打包版本：
-   - Windows: 下載 `YouTube下載工具_Windows.zip`
-   - macOS: 下載 `YouTube下載工具_macOS.zip`
-   - Linux: 下載 `YouTube下載工具_Linux.tar.gz`
+1. 從 [Releases](https://github.com/111208063/youtubetool/dist) 頁面下載最新的打包版本：
+   
 
 2. 解壓縮下載的檔案到任意位置
 
 3. 直接運行可執行檔：
-   - Windows: 雙擊 `YouTube下載工具.exe`
-   - macOS: 雙擊 `YouTube下載工具`
-   - Linux: 執行 `./YouTube下載工具`
+   - Windows: 雙擊 `YouTubetool.exe`
+   
 
 4. 無需安裝 Python 或 FFmpeg，所有必要的依賴都已包含在內
 
