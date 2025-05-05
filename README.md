@@ -114,7 +114,7 @@ pip install -r requirements.txt
 *下載頁面主界面*
 
 ### 分析影片
-![分析影片](docs/analyze.png)
+![分析影片](docs/analyzepage.png)
 *影片分析結果顯示*
 
 ### 下載進度
