@@ -274,6 +274,4 @@ pytest
 pytest tests/test_downloader.py
 ```
 
-## 授權
 
-此專案採用 MIT 授權條款 - 詳情參見 LICENSE 文件
