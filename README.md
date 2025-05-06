@@ -73,7 +73,7 @@ pip install -r requirements.txt
 
 ### 方法三：使用獨立可執行檔（推薦）
 
-1. 從 [Releases](https://github.com/111208063/youtubetool/dist) 頁面下載最新的打包版本：
+1. 從 [dist](https://github.com/111208063/youtube_tool/dist) 頁面下載最新的打包版本：
    
 
 2. 解壓縮下載的檔案到任意位置
